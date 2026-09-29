@@ -1883,10 +1883,19 @@ async function checkAndSendDueDateReminders() {
                             oldBills.forEach(f => fs.unlinkSync(path.join(exportDir, f)));
                         }
 
-                        // สร้างรูปบิลใหม่ (ฟังก์ชัน createBillingImage จะเช็ก Date() ปัจจุบันและบวกค่าปรับให้อัตโนมัติ)
-                        const fileName = `Bill_Room_${room.number}_${Date.now()}.png`;
-                        const filePath = path.join(exportDir, fileName);
-                        await createBillingImage(room, billData, filePath);
+                        // เปลี่ยนลอจิกเดิมใน ให้สร้างสำเร็จก่อนค่อยลบ
+                        const newFileName = `Bill_Room_${room.number}_${Date.now()}.png`;
+                        const newFilePath = path.join(exportDir, newFileName);
+
+                        // 1. สร้างบิลใหม่ให้สำเร็จก่อน
+                        await createBillingImage(room, billData, newFilePath);
+
+                        // 2. เมื่อสร้างสำเร็จแล้ว ค่อยตามลบบิลเก่าออก
+                        if (fs.existsSync(exportDir)) {
+                            const files = fs.readdirSync(exportDir);
+                            const oldBills = files.filter(f => f.startsWith(`Bill_Room_${room.number}_`) && f !== newFileName);
+                            oldBills.forEach(f => fs.unlinkSync(path.join(exportDir, f)));
+                        }
                     } catch (e) {
                         console.error(`Failed to regenerate updated bill for room ${room.number}:`, e);
                     }
