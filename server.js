@@ -1736,7 +1736,7 @@ async function createBillingImage(room, inputs, filePath) {
     </html>
     `;
 
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox','--disable-dev-shm-usage','--single-process'] });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
     
