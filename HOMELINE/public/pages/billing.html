@@ -1,0 +1,201 @@
+<div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl border border-gray-100 max-w-4xl mx-auto text-gray-800">
+    <!-- Header -->
+    <div class="border-b border-gray-100 pb-5 mb-6">
+        <h3 class="text-2xl font-extrabold text-gray-800 flex items-center gap-3">
+            <span class="text-3xl">🧾</span> คำนวณค่าน้ำ-ค่าไฟ และส่งบิลเข้า LINE
+        </h3>
+        <p class="text-sm text-gray-500 mt-1">เลือกห้องพักและกรอกข้อมูลมิเตอร์เพื่อสรุปยอดและส่งแจ้งเตือน</p>
+    </div>
+    
+    <!-- 1. ข้อมูลหลัก (Main Info) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">🏢 เลือกลุ่มหอพัก</label>
+            <select id="billDormName" onchange="fetchRoomsForBilling()" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 hover:bg-white cursor-pointer">
+                <option value="">-- เลือกกลุ่มหอพัก --</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">🚪 เลือกห้องพักที่ต้องการออกบิล</label>
+            <select id="billRoom" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 hover:bg-white cursor-pointer">
+                <option value="">-- เลือกห้องพัก --</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">📅 ประจำเดือน (เดือนที่ออกบิล)</label>
+            <input type="month" id="billMonth" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 hover:bg-white" required>
+        </div>
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">💬 ระบุผู้รับใน LINE</label>
+            <select id="billLineUser" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 hover:bg-white cursor-pointer">
+                <option value="">-- ไม่ส่ง LINE / พิมพ์ชื่อเพื่อค้นหา --</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 2. ส่วนกรอกเลขมิเตอร์แบบกำหนดเอง (Meters) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <!-- ไฟฟ้า -->
+        <div class="bg-yellow-50/50 p-5 rounded-2xl border border-yellow-200 shadow-sm">
+            <h4 class="font-bold text-yellow-800 border-b border-yellow-200 pb-3 mb-4 flex items-center gap-2">
+                ⚡ ค่าไฟฟ้า
+            </h4>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">เลขมิเตอร์ก่อน (เดือนก่อน)</label>
+                        <input type="number" id="elecPrev" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">เลขมิเตอร์หลัง (เดือนนี้)</label>
+                        <input type="number" id="elecCurr" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400" placeholder="0">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">ราคาต่อหน่วย (บาท)</label>
+                    <input type="number" id="elecRate" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400 bg-white" value="7">
+                </div>
+            </div>
+        </div>
+
+        <!-- น้ำประปา -->
+        <div class="bg-blue-50/50 p-5 rounded-2xl border border-blue-200 shadow-sm">
+            <h4 class="font-bold text-blue-800 border-b border-blue-200 pb-3 mb-4 flex items-center gap-2">
+                💧 ค่าน้ำประปา
+            </h4>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">เลขมิเตอร์ก่อน (เดือนก่อน)</label>
+                        <input type="number" id="waterPrev" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-blue-400 focus:border-blue-400" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">เลขมิเตอร์หลัง (เดือนนี้)</label>
+                        <input type="number" id="waterCurr" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-blue-400 focus:border-blue-400" placeholder="0">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">ราคาต่อหน่วย (บาท)</label>
+                    <input type="number" id="waterRate" class="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-blue-400 focus:border-blue-400 bg-white" value="25">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. ส่วนข้อมูลการชำระเงินท้ายบิล (Payment Info) -->
+    <div class="bg-emerald-50/50 p-5 md:p-6 rounded-2xl border border-emerald-200 shadow-sm mb-8">
+        <h4 class="font-bold text-emerald-800 border-b border-emerald-200 pb-3 mb-5 flex items-center gap-2">
+            💳 ข้อมูลบัญชีรับเงิน (แสดงท้ายบิล)
+        </h4>
+        
+        <div class="mb-5">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">รูปแบบการชำระเงิน</label>
+            <select id="payMethod" onchange="togglePayMethod()" class="w-full md:w-1/2 rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer">
+                <option value="account">โอนผ่านบัญชีธนาคาร</option>
+                <option value="qr">สแกน QR Code (พร้อมเพย์)</option>
+            </select>
+        </div>
+
+        <div id="qrUploadSection" style="display: none;" class="mb-5 p-4 bg-white rounded-xl border border-emerald-100">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">อัปโหลดรูป QR Code ของคุณ</label>
+            <input type="file" id="payQrImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 border border-gray-200 rounded-lg cursor-pointer">
+            <input type="hidden" id="payQrBase64">
+        </div>
+
+        <div id="bankInfo" class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">ธนาคาร</label>
+                <select id="payBank" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer">
+                    <option value="ธนาคารกสิกรไทย">🟢 ธนาคารกสิกรไทย</option>
+                    <option value="ธนาคารไทยพาณิชย์">🟣 ธนาคารไทยพาณิชย์</option>
+                    <option value="ธนาคารกรุงเทพ">🔵 ธนาคารกรุงเทพ</option>
+                    <option value="ธนาคารกรุงไทย">🟦 ธนาคารกรุงไทย</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">เลขบัญชี / เบอร์พร้อมเพย์</label>
+                <input type="text" id="payAccountNo" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="เช่น 123-4-5678-90">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">ชื่อบัญชีผู้รับเงิน</label>
+                <input type="text" id="payName" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="ชื่อ-นามสกุล">
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">เบอร์โทรศัพท์ติดต่อ</label>
+                <input type="text" id="payPhone" class="w-full rounded-xl border-gray-300 shadow-sm p-3 border focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="เบอร์โทรศัพท์">
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. ส่วนค่าใช้จ่ายเพิ่มเติม (Optional) -->
+        <div class="bg-orange-50/40 p-5 md:p-6 rounded-2xl border border-orange-200 shadow-sm mb-8 transition-all duration-300">
+            <div class="flex items-center justify-between border-b border-orange-200 pb-3">
+                <label class="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" id="optFeeCheck" onchange="toggleOptFee()" class="w-5 h-5 text-orange-600 bg-white border-gray-300 rounded focus:ring-orange-500 cursor-pointer">
+                    <span class="font-bold text-gray-700 group-hover:text-orange-700 transition-colors">➕ เพิ่มค่าใช้จ่ายอื่นๆ (ถ้ามี)</span>
+                </label>
+                <button type="button" id="btnAddOptFee" onclick="addOptFeeRow()" class="bg-white border border-orange-300 text-orange-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-orange-100 transition-colors hidden shadow-sm">
+                    + เพิ่มรายการ
+                </button>
+            </div>
+            
+            <div id="optFeeContainer" class="opacity-50 pointer-events-none transition-all duration-300 mt-4">
+                <div id="optFeeList" class="space-y-3">
+                    <!-- แถวเริ่มต้น 1 แถว -->
+                    <div class="flex flex-col sm:flex-row gap-3 opt-fee-row bg-white p-3 rounded-xl border border-orange-100 shadow-sm">
+                        <div class="flex-1">
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">รายการค่าใช้จ่าย</label>
+                            <input type="text" class="optFeeName w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-orange-400 focus:border-orange-400" placeholder="เช่น ค่าที่จอดรถ, ค่าส่วนกลาง">
+                        </div>
+                        <div class="w-full sm:w-40">
+                            <label class="block text-xs font-semibold text-gray-500 mb-1">จำนวนเงิน (บาท)</label>
+                            <input type="number" class="optFeeAmount w-full rounded-lg border-gray-300 shadow-sm p-2.5 border focus:ring-2 focus:ring-orange-400 focus:border-orange-400" placeholder="0">
+                        </div>
+                        <div class="flex items-end justify-end">
+                            <button type="button" onclick="removeOptFeeRow(this)" class="bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-lg hover:bg-red-500 hover:text-white transition-colors w-full sm:w-auto font-medium">
+                                ลบ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ส่วนตั้งค่าวันครบกำหนดชำระและค่าปรับ -->
+    <div class="bg-orange-50 p-4 rounded-xl border border-orange-100 mt-4 mb-4">
+        <h4 class="font-bold text-orange-800 mb-3">⚠️ ตั้งค่าวันครบกำหนดและค่าปรับล่าช้า</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- วันครบกำหนด -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">วัน/เดือน ที่ครบกำหนดชำระ</label>
+                <input type="date" id="billDueDate" class="w-full border-gray-300 rounded-lg p-2.5 shadow-sm bg-white focus:ring-orange-500 focus:border-orange-500">
+            </div>
+
+            <!-- ราคาค่าปรับต่อวัน -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">ค่าปรับล่าช้า (บาท / ต่อวัน)</label>
+                <div class="relative">
+                    <input type="number" id="finePerDay" min="0" placeholder="เช่น 50" class="w-full border-gray-300 rounded-lg p-2.5 shadow-sm bg-white focus:ring-orange-500 focus:border-orange-500">
+                    <span class="absolute right-3 top-2.5 text-gray-400">บาท</span>
+                </div>
+                <p class="text-xs text-orange-600 mt-1">*เว้นว่างหรือใส่ 0 หากไม่มีค่าปรับ</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ปุ่ม Action -->
+    <button onclick="generateBills()" class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 text-lg flex items-center justify-center gap-2 mt-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+        </svg>
+        สร้างบิลและส่งแจ้งเตือนทาง LINE
+    </button>
+    
+    <!-- ผลลัพธ์ -->
+    <div id="billing-result" class="mt-6 text-center"></div>
+</div>

@@ -1,0 +1,31 @@
+<div class="bg-white p-6 rounded-xl shadow-sm border w-full max-w-5xl">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h2 class="text-xl font-bold text-gray-800">📄 รายการบิลที่ออกแล้ว</h2>
+            <p class="text-sm text-gray-500">ตรวจสอบรูปภาพบิลแจ้งหนี้ที่ระบบสร้างขึ้นในโฟลเดอร์ exports</p>
+        </div>
+        <!-- แถบค้นหาบิล -->
+        <div class="mb-6 flex items-center gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+            <div class="flex-1 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                <span class="text-gray-400">🔍</span>
+                <input type="text" id="searchBillInput" placeholder="ค้นหาชื่อไฟล์บิล (เช่น Room_101, 10/2026)..."
+                    class="bg-transparent w-full focus:outline-none text-gray-700 text-sm"
+                    onkeyup="if(event.key === 'Enter') searchExportedBills()">
+            </div>
+            <button onclick="searchExportedBills()"
+                    class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-sm transition-colors text-sm whitespace-nowrap">
+                ค้นหา
+            </button>
+        </div>
+        <button onclick="fetchExportedBills()" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg font-semibold hover:bg-indigo-100 transition">
+            🔄 รีเฟรชข้อมูล
+        </button>
+    </div>
+    
+    <!-- พื้นที่แสดงการ์ดบิล -->
+    <div id="bills-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+        <div class="text-center py-10 text-gray-400 col-span-full">
+            ⏳ กำลังโหลดข้อมูลบิล...
+        </div>
+    </div>
+</div>

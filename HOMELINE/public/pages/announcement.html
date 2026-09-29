@@ -1,0 +1,20 @@
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="bg-white p-6 rounded-xl shadow-sm border h-fit">
+        <h3 class="text-lg font-bold mb-4">📢 สร้างประกาศใหม่</h3>
+        <form id="ann-form" onsubmit="postAnnouncement(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">หัวข้อประกาศ</label>
+                <input type="text" id="annTitle" class="w-full border p-2 rounded" required>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-600 mb-1">เนื้อหาประกาศ</label>
+                <textarea id="annContent" rows="4" class="w-full border p-2 rounded" required></textarea>
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded font-semibold hover:bg-indigo-700">ส่งประกาศไปที่แอปผู้เช่า</button>
+        </form>
+    </div>
+    <div class="bg-white p-6 rounded-xl shadow-sm border md:col-span-2">
+        <h3 class="text-lg font-bold mb-4">📜 ประวัติประกาศทั้งหมด</h3>
+        <div id="announcement-list"></div>
+    </div>
+</div>

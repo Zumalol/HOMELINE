@@ -1,0 +1,43 @@
+<!-- แถบด้านบนสำหรับจอมือถือ (ซ่อนในจอคอม) -->
+<div class="md:hidden bg-indigo-900 text-white p-4 flex justify-between items-center w-full fixed top-0 z-40 shadow-md">
+    <div class="text-xl font-bold tracking-wider">🏢 DormMaster</div>
+    <button onclick="document.getElementById('mobile-sidebar').classList.toggle('-translate-x-full')" class="focus:outline-none p-1 bg-indigo-800 rounded">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+    </button>
+</div>
+
+<!-- แถบเมนูด้านข้าง (เลื่อนเปิด-ปิดในมือถือ) -->
+<div id="mobile-sidebar" class="w-64 bg-indigo-900 text-white flex flex-col h-full fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 shadow-2xl md:shadow-none">
+    
+    <div class="p-5 text-xl md:text-2xl font-bold tracking-wider border-b border-indigo-800 flex justify-between items-center mt-16 md:mt-0">
+        <span>🏢 DormMaster</span>
+        <!-- ปุ่มกากบาทปิดเมนู (แสดงเฉพาะมือถือ) -->
+        <button onclick="document.getElementById('mobile-sidebar').classList.add('-translate-x-full')" class="md:hidden text-indigo-300 hover:text-white">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+    </div>
+
+    <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+        <!-- เพิ่มคำสั่งปิด Sidebar อัตโนมัติเมื่อกดเลือกเมนูในมือถือ -->
+        <a href="#" onclick="switchTab('dashboard'); closeSidebarMobile()" id="nav-dashboard" class="block py-2.5 px-4 rounded transition bg-indigo-800">📊 หน้าหลัก & ภาพรวม</a>
+        <a href="#" onclick="switchTab('rooms'); closeSidebarMobile()" id="nav-rooms" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">🚪 จัดการห้องพัก & เพิ่มข้อมูล</a>
+        <a href="#" onclick="switchTab('billing'); closeSidebarMobile()" id="nav-billing" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">⚡ ออกบิลคลิกเดียว</a>
+        <a href="#" onclick="switchTab('tenants'); closeSidebarMobile()" id="nav-tenants" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">🛌 รายชื่อผู้เช่าทั้งหมด</a>
+        <a href="#" onclick="switchTab('ocr'); closeSidebarMobile()" id="nav-ocr" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">🧾 บิลที่ออกแล้ว</a>
+    
+        <a href="#" onclick="switchTab('repair'); closeSidebarMobile()" id="nav-repair" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">🛠️ แจ้งซ่อม (จากผู้เช่า)</a>
+        <a href="#" onclick="switchTab('parcel'); closeSidebarMobile()" id="nav-parcel" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">📦 จัดการพัสดุ</a>
+        <a href="#" onclick="switchTab('announcement'); closeSidebarMobile()" id="nav-announcement" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">📢 ข่าวสาร & ประกาศ</a>
+        <a href="#" onclick="switchTab('contract'); closeSidebarMobile()" id="nav-contract" class="block py-2.5 px-4 rounded transition hover:bg-indigo-800">✍️ เซ็นสัญญาออนไลน์</a>
+    </nav>
+    <div class="p-4 border-t border-indigo-800 text-sm text-indigo-300">
+        ผู้ใช้งาน: แอดมินหลัก
+    </div>
+</div>
+
+<script>
+    function closeSidebarMobile() {
+        // ใช้ปิดเมนูอัตโนมัติเวลากดแท็บ
+        document.getElementById('mobile-sidebar').classList.add('-translate-x-full');
+    }
+</script>
