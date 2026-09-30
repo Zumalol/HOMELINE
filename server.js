@@ -442,6 +442,18 @@ app.delete(`${apiPrefix}/tenants/:id`, async (req, res) => {
 app.get(`${apiPrefix}/payment-accounts`, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC');
+        // 🟢 แมปตัวแปรให้มีทั้ง snake_case, camelCase และ pay* Aliases
+        const accounts = result.rows.map(acc => ({
+            ...acc,
+            bankName: acc.bank_name,
+            accountNumber: acc.account_number,
+            accountName: acc.account_name,
+            payBank: acc.bank_name,
+            payAccountNo: acc.account_number,
+            payName: acc.account_name,
+            payPhone: acc.phone,
+            payQrBase64: acc.qr_image
+        }));
         res.json({ success: true, accounts: result.rows });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -1170,15 +1182,34 @@ app.post('/webhook', async (req, res) => {
                             const roomRes = await pool.query('SELECT last_bill_data FROM rooms WHERE number = $1', [billRes.rows[0].room_number]);
                             if (roomRes.rows.length > 0 && roomRes.rows[0].last_bill_data) {
                                 const billData = JSON.parse(roomRes.rows[0].last_bill_data);
-                                bankName = billData.payBank || '-';
-                                accNo = billData.payAccountNo || '-';
-                                accName = billData.payName || '-';
+                                // 🟢 อ่านค่ารองรับชื่อ Key ทุกรูปแบบ
+                                bankName = billData.payBank || billData.bank_name || billData.bankName || '-';
+                                accNo = billData.payAccountNo || billData.account_number || billData.accountNumber || '-';
+                                accName = billData.payName || billData.account_name || billData.accountName || '-';
 
-                                const accRes = await pool.query('SELECT id, qr_image FROM payment_accounts WHERE account_number = $1 LIMIT 1', [accNo]);
-                                if (accRes.rows.length > 0 && accRes.rows[0].qr_image) {
-                                    const host = req.get('host');
-                                    qrUrl = `https://${host}${apiPrefix}/payment-accounts/${accRes.rows[0].id}/qr`;
+                                if (accNo !== '-') {
+                                    const accRes = await pool.query('SELECT id, qr_image FROM payment_accounts WHERE account_number = $1 LIMIT 1', [accNo]);
+                                    if (accRes.rows.length > 0 && accRes.rows[0].qr_image) {
+                                        const host = req.get('host');
+                                        qrUrl = `https://${host}${apiPrefix}/payment-accounts/${accRes.rows[0].id}/qr`;
+                                    }
                                 }
+                            }
+                        }
+                    }
+
+                    // 🟢 FALLBACK: ถ้าในข้อมูลบิลไม่มีรายละเอียดธนาคาร ให้ดึงบัญชีล่าสุดจากตาราง payment_accounts
+                    if (bankName === '-' || accNo === '-') {
+                        const defaultAccRes = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC LIMIT 1');
+                        if (defaultAccRes.rows.length > 0) {
+                            const acc = defaultAccRes.rows[0];
+                            bankName = acc.bank_name || '-';
+                            accNo = acc.account_number || '-';
+                            accName = acc.account_name || '-';
+
+                            if (acc.qr_image) {
+                                const host = req.get('host');
+                                qrUrl = `https://${host}${apiPrefix}/payment-accounts/${acc.id}/qr`;
                             }
                         }
                     }
@@ -1682,6 +1713,12 @@ function uploadBufferToCloudinary(buffer, folderName = 'dorm_bills') {
 // ฟังก์ชันสร้างรูปภาพบิลแทน Excel
 async function createBillingImage(room, inputs, filePath) {
     const roomPrice = Number(room.price || 3000);
+    // 🟢 อ่านค่าธนาคารรองรับทั้ง snake_case, camelCase และ pay*
+    const payBank = inputs.payBank || inputs.bank_name || inputs.bankName || 'ไม่ระบุ';
+    const payAccountNo = inputs.payAccountNo || inputs.account_number || inputs.accountNumber || 'ไม่ระบุ';
+    const payName = inputs.payName || inputs.account_name || inputs.accountName || 'ไม่ระบุ';
+    const payPhone = inputs.payPhone || inputs.phone || '-';
+    const qrImage = inputs.payQrBase64 || inputs.qr_image || inputs.qrImage;
     const payTextLine1 = inputs.payMethod === 'qr' ? 'กรุณาชำระเงินผ่านการสแกน QR Code' : `กรุณาชำระเงินผ่านบัญชี "${inputs.payBank}"`;
     const payTextLine2 = inputs.payMethod === 'qr' ? `ชื่อบัญชี: ${inputs.payName}` : `เลขบัญชี ${inputs.payAccountNo}  ชื่อบัญชี ${inputs.payName}`;
     const formattedMonth = formatThaiMonth(inputs.billMonth);
@@ -1695,10 +1732,12 @@ async function createBillingImage(room, inputs, filePath) {
     const wCurr = Number(inputs.waterCurr);
     const wUnits = wCurr - wPrev;
     let wTotal = wUnits <= 4 ? 100 : wUnits * 25;
+    
 
     let optFeeTotal = 0;
     let optFeeRowHTML = '';
     let rowNumber = 4;
+    
 
     if (inputs.optFeeCheck && inputs.optFees && Array.isArray(inputs.optFees)) {
         inputs.optFees.forEach(fee => {
@@ -1766,8 +1805,8 @@ async function createBillingImage(room, inputs, filePath) {
     const currentDate = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' });
 
     let qrHtml = '';
-    if (inputs.payMethod === 'qr' && inputs.payQrBase64) {
-        qrHtml = `<img src="${inputs.payQrBase64}" style="width: 140px; height: 140px; margin-top: 15px; border: 1px solid #ccc; padding: 5px;" />`;
+    if ((inputs.payMethod === 'qr' || qrImage) && qrImage) {
+        qrHtml = `<img src="${qrImage}" style="width: 140px; height: 140px; margin-top: 15px; border: 1px solid #ccc; padding: 5px;" />`;
     }
 
     const htmlContent = `
@@ -1906,12 +1945,33 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
         
         const room = result.rows[0];
 
-        // 🟢 บันทึก/อัปเดตข้อมูลบัญชีธนาคารลง payment_accounts อัตโนมัติ
-        const payBank = req.body.payBank || req.body.bank_name || req.body.bankName;
-        const payAccountNo = req.body.payAccountNo || req.body.account_number || req.body.accountNumber;
-        const payName = req.body.payName || req.body.account_name || req.body.accountName;
-        const payPhone = req.body.payPhone || req.body.phone;
-        const payQrBase64 = req.body.payQrBase64 || req.body.qr_image || req.body.qrImage;
+        // 🟢 1. อ่านค่าธนาคารรองรับคีย์ทุกรูปแบบ
+        let payBank = req.body.payBank || req.body.bank_name || req.body.bankName;
+        let payAccountNo = req.body.payAccountNo || req.body.account_number || req.body.accountNumber;
+        let payName = req.body.payName || req.body.account_name || req.body.accountName;
+        let payPhone = req.body.payPhone || req.body.phone;
+        let payQrBase64 = req.body.payQrBase64 || req.body.qr_image || req.body.qrImage;
+
+
+        // 🟢 2. หากใน Request ไม่มีข้อมูล ให้ดึงบัญชีล่าสุดจากตาราง payment_accounts อัตโนมัติ
+        if (!payBank || !payAccountNo) {
+            const defaultAcc = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC LIMIT 1');
+            if (defaultAcc.rows.length > 0) {
+                const acc = defaultAcc.rows[0];
+                payBank = payBank || acc.bank_name;
+                payAccountNo = payAccountNo || acc.account_number;
+                payName = payName || acc.account_name;
+                payPhone = payPhone || acc.phone;
+                payQrBase64 = payQrBase64 || acc.qr_image;
+            }
+        }
+
+        // นำค่าที่ Normalize แล้วใส่กลับลงใน req.body
+        req.body.payBank = payBank;
+        req.body.payAccountNo = payAccountNo;
+        req.body.payName = payName;
+        req.body.payPhone = payPhone;
+        req.body.payQrBase64 = payQrBase64;
 
         if (payAccountNo) {
             const existingAcc = await pool.query('SELECT id FROM payment_accounts WHERE account_number = $1', [payAccountNo]);
