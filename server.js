@@ -981,16 +981,15 @@ app.post('/webhook', async (req, res) => {
                     }
 
                     const room = roomRes.rows[0];
-                    const exportDir = path.join(__dirname, 'public', 'exports');
-                    let unPaidBills = [];
-                    
-                    if (fs.existsSync(exportDir)) {
-                        const files = fs.readdirSync(exportDir);
-                        unPaidBills = files.filter(file => 
-                            file.startsWith(`Bill_Room_${room.number}_`) && 
-                            (file.endsWith('.png') || file.endsWith('.jpg'))
-                        );
-                    }
+
+                    // ดึงบิลค้างชำระจาก PostgreSQL ตาราง bills
+                    const billsRes = await pool.query(`
+                        SELECT * FROM bills 
+                        WHERE room_number = $1 AND status = 'ค้างชำระ' 
+                        ORDER BY id DESC
+                    `, [room.number]);
+
+                    const unPaidBills = billsRes.rows;
 
                     if (unPaidBills.length === 0) {
                         await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -1001,19 +1000,17 @@ app.post('/webhook', async (req, res) => {
                         return;
                     }
 
-                    const host = req.get('host');
-                    const flexContents = unPaidBills.map(billFile => {
-                        let fileUrl = `https://${host}/exports/${billFile}`;
+                    const flexContents = unPaidBills.map(bill => {
                         return {
                             type: "bubble",
                             size: "mega",
                             header: {
                                 type: "box", layout: "vertical", backgroundColor: "#3b82f6", paddingAll: "lg",
-                                contents: [{ type: "text", text: `📄 บิลห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "lg" }]
+                                contents: [{ type: "text", text: `📄 บิลห้อง ${room.number} (#${bill.id})`, color: "#ffffff", weight: "bold", size: "lg" }]
                             },
                             hero: {
-                                type: "image", url: fileUrl, size: "full", aspectRatio: "3:4", aspectMode: "fit", backgroundColor: "#f9fafb",
-                                action: { type: "uri", label: "ดูรูปเต็ม", uri: fileUrl }
+                                type: "image", url: bill.bill_url, size: "full", aspectRatio: "3:4", aspectMode: "fit", backgroundColor: "#f9fafb",
+                                action: { type: "uri", label: "ดูรูปเต็ม", uri: bill.bill_url }
                             },
                             body: {
                                 type: "box", layout: "vertical", paddingAll: "md",
@@ -1023,7 +1020,7 @@ app.post('/webhook', async (req, res) => {
                                 type: "box", layout: "vertical", paddingAll: "sm",
                                 contents: [{
                                     type: "button", style: "primary", color: "#3b82f6",
-                                    action: { type: "message", label: "เลือกชำระบิลนี้", text: `แจ้งชำระบิล ${billFile}` }
+                                    action: { type: "message", label: "เลือกชำระบิลนี้", text: `แจ้งชำระบิล #${bill.id}` }
                                 }]
                             }
                         };
@@ -1206,29 +1203,31 @@ app.post('/webhook', async (req, res) => {
                                 
                                 // กรณีเลือกชำระแบบเจาะจงบิล
                                 if (billName && billName !== 'null' && billName !== '') {
-                                    const filePath = path.join(__dirname, 'public', 'exports', billName);
-                                    
-                                    // 1. ลบไฟล์บิลใบที่จ่ายเสร็จแล้ว
-                                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
-
-                                    // 2. เช็คว่ายังเหลือบิลใบอื่นของห้องนี้ค้างอยู่หรือไม่
-                                    const exportDir = path.join(__dirname, 'public', 'exports');
-                                    let remainingBills = [];
-                                    if (fs.existsSync(exportDir)) {
-                                        remainingBills = fs.readdirSync(exportDir).filter(f => 
-                                            f.startsWith(`Bill_Room_${room.number}_`) && 
-                                            (f.endsWith('.png') || f.endsWith('.jpg'))
-                                        );
+                                    // 1. อัปเดตสถานะบิลใบนั้นในตาราง bills เป็น 'ชำระเงินแล้ว'
+                                    const billIdMatch = billName.match(/#(\d+)/);
+                                    if (billIdMatch) {
+                                        const billId = billIdMatch[1];
+                                        await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
+                                    } else {
+                                        const filePath = path.join(__dirname, 'public', 'exports', billName);
+                                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
                                     }
 
-                                    // 3. ถ้าไม่เหลือบิลเลย ค่อยเปลี่ยนสถานะเป็น 'ชำระเงินแล้ว'
-                                    if (remainingBills.length === 0) {
+                                    // 2. เช็คว่ายังเหลือบิลใบอื่นของห้องนี้ค้างอยู่อีกหรือไม่
+                                    const remainingBillsRes = await pool.query(`
+                                        SELECT * FROM bills 
+                                        WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                    `, [room.number]);
+
+                                    // 3. ถ้าไม่เหลือบิลค้างชำระแล้ว ให้เปลี่ยนสถานะห้องพักเป็น 'ชำระเงินแล้ว'
+                                    if (remainingBillsRes.rows.length === 0) {
                                         await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
                                     }
                                     
-                                    pendingSlipBills.delete(tenantId); // ล้างความจำหลังจ่ายสำเร็จ
+                                    pendingSlipBills.delete(tenantId);
                                 } else {
-                                    // การยืนยันแบบปกติ (ถ้าไม่ได้เลือกบิล)
+                                    // การยืนยันแบบปกติ
+                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
                                     await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
                                 }
                             }
