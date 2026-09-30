@@ -1745,7 +1745,7 @@ async function createBillingImage(room, inputs, filePath) {
     await page.setViewport({ width: 880, height: Math.ceil(boundingBox.height) });
 
     await page.screenshot({ path: filePath, type: 'png' });
-    await browser.close();
+    await browser.close(); 
 }
 
 // =====================================================
