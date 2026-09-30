@@ -1053,7 +1053,7 @@ app.post('/webhook', async (req, res) => {
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
                     body: JSON.stringify({
                         replyToken: event.replyToken,
-                        messages: [{ type: 'text', text: `✅ ระบบกำลังเตรียมรับชำระบิล:\n${billName}\n\nกรุณาสแกน QR Code แล้วส่งรูปสลิปเข้ามาเพื่อยืนยันการชำระเงินของใบนี้ได้เลยครับ` }]
+                        messages: [{ type: 'text', text: `✅ ระบบกำลังเตรียมรับชำระบิล:\n${billName}\n\nกรุณาชำระเงินตามที่ระบุหรือสแกน QR Code**หากมี** แล้วส่งรูปสลิปเข้ามาเพื่อยืนยันการชำระเงินของใบนี้ได้เลยครับ` }]
                     })
                 });
             }
