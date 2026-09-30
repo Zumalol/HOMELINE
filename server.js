@@ -448,15 +448,60 @@ app.get(`${apiPrefix}/payment-accounts`, async (req, res) => {
     }
 });
 
+// เพิ่ม/บันทึกบัญชีรับเงิน (รองรับทั้ง camelCase และ snake_case)
 app.post(`${apiPrefix}/payment-accounts`, async (req, res) => {
-    const { bank_name, account_number, account_name, phone, qr_image } = req.body;
+    const bank_name = req.body.bank_name || req.body.bankName || req.body.payBank || req.body.bank;
+    const account_number = req.body.account_number || req.body.accountNumber || req.body.payAccountNo || req.body.accountNo;
+    const account_name = req.body.account_name || req.body.accountName || req.body.payName || req.body.account;
+    const phone = req.body.phone || req.body.payPhone || '';
+    const qr_image = req.body.qr_image || req.body.qrImage || req.body.payQrBase64 || req.body.qrCode || req.body.qr_code || null;
+
+    if (!bank_name || !account_number) {
+        return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อธนาคารและเลขที่บัญชี' });
+    }
+
     try {
         const result = await pool.query(
-            'INSERT INTO payment_accounts (bank_name, account_number, account_name, phone, qr_image) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            `INSERT INTO payment_accounts (bank_name, account_number, account_name, phone, qr_image) 
+             VALUES ($1, $2, $3, $4, $5) 
+             RETURNING *`,
             [bank_name, account_number, account_name, phone, qr_image]
         );
         res.json({ success: true, message: 'บันทึกบัญชีรับเงินสำเร็จ', account: result.rows[0] });
     } catch (error) {
+        console.error('Save Payment Account Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// แก้ไขข้อมูลบัญชีรับเงิน (PUT)
+app.put(`${apiPrefix}/payment-accounts/:id`, async (req, res) => {
+    const { id } = req.params;
+    const bank_name = req.body.bank_name || req.body.bankName || req.body.payBank || req.body.bank;
+    const account_number = req.body.account_number || req.body.accountNumber || req.body.payAccountNo || req.body.accountNo;
+    const account_name = req.body.account_name || req.body.accountName || req.body.payName || req.body.account;
+    const phone = req.body.phone || req.body.payPhone || '';
+    const qr_image = req.body.qr_image || req.body.qrImage || req.body.payQrBase64 || req.body.qrCode || req.body.qr_code || null;
+
+    try {
+        const result = await pool.query(
+            `UPDATE payment_accounts 
+             SET bank_name = COALESCE($1, bank_name), 
+                 account_number = COALESCE($2, account_number), 
+                 account_name = COALESCE($3, account_name), 
+                 phone = COALESCE($4, phone), 
+                 qr_image = COALESCE($5, qr_image)
+             WHERE id = $6 RETURNING *`,
+            [bank_name, account_number, account_name, phone, qr_image, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบบัญชีที่ต้องการแก้ไข' });
+        }
+
+        res.json({ success: true, message: 'แก้ไขบัญชีรับเงินสำเร็จ', account: result.rows[0] });
+    } catch (error) {
+        console.error('Update Payment Account Error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -1860,6 +1905,34 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบห้องที่ระบุ หรือห้องยังไม่มีผู้เช่า' });
         
         const room = result.rows[0];
+
+        // 🟢 บันทึก/อัปเดตข้อมูลบัญชีธนาคารลง payment_accounts อัตโนมัติ
+        const payBank = req.body.payBank || req.body.bank_name || req.body.bankName;
+        const payAccountNo = req.body.payAccountNo || req.body.account_number || req.body.accountNumber;
+        const payName = req.body.payName || req.body.account_name || req.body.accountName;
+        const payPhone = req.body.payPhone || req.body.phone;
+        const payQrBase64 = req.body.payQrBase64 || req.body.qr_image || req.body.qrImage;
+
+        if (payAccountNo) {
+            const existingAcc = await pool.query('SELECT id FROM payment_accounts WHERE account_number = $1', [payAccountNo]);
+            if (existingAcc.rows.length > 0) {
+                await pool.query(
+                    `UPDATE payment_accounts 
+                     SET bank_name = COALESCE($1, bank_name), 
+                         account_name = COALESCE($2, account_name), 
+                         phone = COALESCE($3, phone), 
+                         qr_image = COALESCE($4, qr_image)
+                     WHERE account_number = $5`,
+                    [payBank, payName, payPhone, payQrBase64, payAccountNo]
+                );
+            } else {
+                await pool.query(
+                    `INSERT INTO payment_accounts (bank_name, account_number, account_name, phone, qr_image)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [payBank, payAccountNo, payName, payPhone, payQrBase64]
+                );
+            }
+        }
 
         // สร้างรูปบิลและอัปโหลดขึ้น Cloudinary
         const uploadResult = await createBillingImage(room, req.body);
