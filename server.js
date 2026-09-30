@@ -439,10 +439,14 @@ app.delete(`${apiPrefix}/tenants/:id`, async (req, res) => {
 // =====================================================
 // API: ข้อมูลบัญชีรับเงิน (Payment Accounts)
 // =====================================================
-app.get(`${apiPrefix}/payment-accounts`, async (req, res) => {
+// =====================================================
+// API: ข้อมูลบัญชีรับเงิน (Payment Accounts)
+// =====================================================
+const getPaymentAccountsHandler = async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC');
-        // 🟢 แมปตัวแปรให้มีทั้ง snake_case, camelCase และ pay* Aliases
+        
+        // แมปตัวแปรให้มีทั้ง snake_case, camelCase และ pay* Aliases
         const accounts = result.rows.map(acc => ({
             ...acc,
             bankName: acc.bank_name,
@@ -454,14 +458,24 @@ app.get(`${apiPrefix}/payment-accounts`, async (req, res) => {
             payPhone: acc.phone,
             payQrBase64: acc.qr_image
         }));
-        res.json({ success: true, accounts: result.rows });
+
+        // ส่งทั้ง accounts และ data รองรับ Frontend ทุกรูปแบบ
+        res.json({ 
+            success: true, 
+            accounts: accounts, 
+            data: accounts 
+        });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-});
+};
 
-// เพิ่ม/บันทึกบัญชีรับเงิน (รองรับทั้ง camelCase และ snake_case)
-app.post(`${apiPrefix}/payment-accounts`, async (req, res) => {
+// รองรับทั้ง /api/payment-accounts, /api/payment-account และ /api/bank-accounts
+app.get(`${apiPrefix}/payment-accounts`, getPaymentAccountsHandler);
+app.get(`${apiPrefix}/payment-account`, getPaymentAccountsHandler);
+app.get(`${apiPrefix}/bank-accounts`, getPaymentAccountsHandler);
+
+const postPaymentAccountHandler = async (req, res) => {
     const bank_name = req.body.bank_name || req.body.bankName || req.body.payBank || req.body.bank;
     const account_number = req.body.account_number || req.body.accountNumber || req.body.payAccountNo || req.body.accountNo;
     const account_name = req.body.account_name || req.body.accountName || req.body.payName || req.body.account;
@@ -479,12 +493,28 @@ app.post(`${apiPrefix}/payment-accounts`, async (req, res) => {
              RETURNING *`,
             [bank_name, account_number, account_name, phone, qr_image]
         );
-        res.json({ success: true, message: 'บันทึกบัญชีรับเงินสำเร็จ', account: result.rows[0] });
+        const acc = result.rows[0];
+        const formattedAcc = {
+            ...acc,
+            bankName: acc.bank_name,
+            accountNumber: acc.account_number,
+            accountName: acc.account_name,
+            payBank: acc.bank_name,
+            payAccountNo: acc.account_number,
+            payName: acc.account_name,
+            payPhone: acc.phone,
+            payQrBase64: acc.qr_image
+        };
+        res.json({ success: true, message: 'บันทึกบัญชีรับเงินสำเร็จ', account: formattedAcc, data: formattedAcc });
     } catch (error) {
         console.error('Save Payment Account Error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-});
+};
+
+app.post(`${apiPrefix}/payment-accounts`, postPaymentAccountHandler);
+app.post(`${apiPrefix}/payment-account`, postPaymentAccountHandler);
+app.post(`${apiPrefix}/bank-accounts`, postPaymentAccountHandler);
 
 // แก้ไขข้อมูลบัญชีรับเงิน (PUT)
 app.put(`${apiPrefix}/payment-accounts/:id`, async (req, res) => {
