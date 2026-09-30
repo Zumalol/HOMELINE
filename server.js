@@ -61,6 +61,15 @@ pool.connect()
     .then(async client => {
         console.log('✅ เชื่อมต่อฐานข้อมูล PostgreSQL สำเร็จ');
         await client.query(`
+            CREATE TABLE IF NOT EXISTS payment_accounts (
+                id SERIAL PRIMARY KEY,
+                bank_name VARCHAR(100),
+                account_number VARCHAR(100),
+                account_name VARCHAR(255),
+                phone VARCHAR(50),
+                qr_image TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS bills (
                 id SERIAL PRIMARY KEY,
                 room_number VARCHAR(50) NOT NULL,
@@ -425,6 +434,61 @@ app.delete(`${apiPrefix}/tenants/:id`, async (req, res) => {
         res.json({ success: true, message: 'ลบข้อมูลผู้เช่าเรียบร้อยแล้ว' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลบ', error: error.message });
+    }
+});
+// =====================================================
+// API: ข้อมูลบัญชีรับเงิน (Payment Accounts)
+// =====================================================
+app.get(`${apiPrefix}/payment-accounts`, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC');
+        res.json({ success: true, accounts: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post(`${apiPrefix}/payment-accounts`, async (req, res) => {
+    const { bank_name, account_number, account_name, phone, qr_image } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO payment_accounts (bank_name, account_number, account_name, phone, qr_image) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [bank_name, account_number, account_name, phone, qr_image]
+        );
+        res.json({ success: true, message: 'บันทึกบัญชีรับเงินสำเร็จ', account: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete(`${apiPrefix}/payment-accounts/:id`, async (req, res) => {
+    try {
+        await pool.query('DELETE FROM payment_accounts WHERE id = $1', [req.params.id]);
+        res.json({ success: true, message: 'ลบบัญชีเรียบร้อยแล้ว' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API สตรีมรูป QR Code ให้ LINE ดึงไปแสดงผล
+app.get(`${apiPrefix}/payment-accounts/:id/qr`, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('SELECT qr_image FROM payment_accounts WHERE id = $1', [id]);
+        if (result.rows.length > 0 && result.rows[0].qr_image) {
+            const qrData = result.rows[0].qr_image;
+            const matches = qrData.match(/^data:(image\/\w+);base64,(.+)$/);
+            if (matches) {
+                const buffer = Buffer.from(matches[2], 'base64');
+                res.writeHead(200, { 'Content-Type': matches[1], 'Content-Length': buffer.length });
+                return res.end(buffer);
+            } else if (qrData.startsWith('http')) {
+                return res.redirect(qrData);
+            }
+        }
+        res.status(404).send('QR Not found');
+    } catch (error) {
+        res.status(500).send('Error');
     }
 });
 
@@ -1046,14 +1110,80 @@ app.post('/webhook', async (req, res) => {
             const payBillMatch = event.message && event.message.type === 'text' && event.message.text.match(/^แจ้งชำระบิล\s*(.+)$/);
             if (payBillMatch) {
                 const billName = payBillMatch[1].trim();
-                pendingSlipBills.set(event.source.userId, billName); // บันทึกบิลที่ถูกเลือกไว้
+                pendingSlipBills.set(event.source.userId, billName); 
                 
+                let bankName = '-', accNo = '-', accName = '-';
+                let qrUrl = null;
+
+                try {
+                    const billIdMatch = billName.match(/#(\d+)/);
+                    if (billIdMatch) {
+                        const billId = billIdMatch[1];
+                        const billRes = await pool.query('SELECT room_number FROM bills WHERE id = $1', [billId]);
+                        
+                        if (billRes.rows.length > 0) {
+                            const roomRes = await pool.query('SELECT last_bill_data FROM rooms WHERE number = $1', [billRes.rows[0].room_number]);
+                            if (roomRes.rows.length > 0 && roomRes.rows[0].last_bill_data) {
+                                const billData = JSON.parse(roomRes.rows[0].last_bill_data);
+                                bankName = billData.payBank || '-';
+                                accNo = billData.payAccountNo || '-';
+                                accName = billData.payName || '-';
+
+                                const accRes = await pool.query('SELECT id, qr_image FROM payment_accounts WHERE account_number = $1 LIMIT 1', [accNo]);
+                                if (accRes.rows.length > 0 && accRes.rows[0].qr_image) {
+                                    const host = req.get('host');
+                                    qrUrl = `https://${host}${apiPrefix}/payment-accounts/${accRes.rows[0].id}/qr`;
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Fetch Bill Info Error:', err);
+                }
+
+                const flexBubble = {
+                    type: "bubble",
+                    body: {
+                        type: "box", layout: "vertical", spacing: "md",
+                        contents: [
+                            { type: "text", text: "ช่องทางการชำระเงิน", weight: "bold", color: "#3b82f6", size: "sm" },
+                            { type: "text", text: billName, weight: "bold", size: "xl", wrap: true },
+                            { type: "separator", margin: "md" },
+                            {
+                                type: "box", layout: "vertical", spacing: "sm", margin: "md",
+                                contents: [
+                                    { type: "text", text: `🏦 ธนาคาร/พร้อมเพย์: ${bankName}`, size: "md", wrap: true },
+                                    { type: "text", text: `💳 เลขบัญชี: ${accNo}`, size: "md", weight: "bold", color: "#111827" },
+                                    { type: "text", text: `👤 ชื่อบัญชี: ${accName}`, size: "md", wrap: true }
+                                ]
+                            },
+                            { type: "separator", margin: "lg" },
+                            { 
+                                type: "text", 
+                                text: "หากโอนแล้วกรุณาส่งสลิป", 
+                                weight: "bold", 
+                                size: "xxl", 
+                                color: "#ef4444", 
+                                align: "center", 
+                                margin: "xl", 
+                                wrap: true 
+                            }
+                        ]
+                    }
+                };
+
+                if (qrUrl) {
+                    flexBubble.hero = {
+                        type: "image", url: qrUrl, size: "full", aspectRatio: "1:1", aspectMode: "fit", backgroundColor: "#ffffff"
+                    };
+                }
+
                 await fetch('https://api.line.me/v2/bot/message/reply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
                     body: JSON.stringify({
                         replyToken: event.replyToken,
-                        messages: [{ type: 'text', text: `✅ ระบบกำลังเตรียมรับชำระบิล:\n${billName}\n\nกรุณาชำระเงินตามที่ระบุหรือสแกน QR Code**หากมี** แล้วส่งรูปสลิปเข้ามาเพื่อยืนยันการชำระเงินของใบนี้ได้เลยครับ` }]
+                        messages: [{ type: "flex", altText: "ข้อมูลการชำระเงิน", contents: flexBubble }]
                     })
                 });
             }

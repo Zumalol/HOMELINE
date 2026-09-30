@@ -356,6 +356,135 @@ function filterDashboardRooms() {
 // ทำให้ HTML มองเห็นฟังก์ชัน
 window.filterDashboardRooms = filterDashboardRooms;
 
+// แปลงไฟล์รูปเป็น Base64
+async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function savePaymentAccount() {
+    const qrFile = document.getElementById('qrImageInput').files[0];
+    const payload = {
+        bank_name: document.getElementById('bankName').value,
+        account_number: document.getElementById('accNumber').value,
+        account_name: document.getElementById('accName').value,
+        phone: document.getElementById('phoneNum').value,
+        qr_image: qrFile ? await fileToBase64(qrFile) : null
+    };
+
+    const res = await fetch('/api/payment-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if(res.ok) {
+        alert('บันทึกสำเร็จ');
+        loadAccounts();
+    }
+}
+// =====================================================
+// PAYMENT ACCOUNT MANAGEMENT
+// =====================================================
+
+// โหลดรายการบัญชีรับเงินมาแสดงในการ์ด (หน้า Parcel)
+async function loadAccounts() {
+    const container = document.getElementById('accountCardsContainer');
+    if (!container) return;
+
+    try {
+        const res = await fetch('/api/payment-accounts');
+        const data = await res.json();
+        
+        if (!data.accounts || data.accounts.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                    <p class="text-gray-400 font-medium">ยังไม่มีข้อมูลบัญชีรับเงิน</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = data.accounts.map(acc => {
+            const qrHtml = acc.qr_image 
+                ? `<div class="mt-3 p-2 bg-gray-50 rounded-xl border border-gray-100 flex justify-center">
+                    <img src="${acc.qr_image}" class="h-36 object-contain rounded-lg">
+                   </div>` 
+                : '';
+
+            return `
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-start mb-3 border-b pb-2">
+                            <h4 class="font-bold text-indigo-700 text-lg">${escapeHTML(acc.bank_name)}</h4>
+                            <span class="text-xs bg-indigo-50 text-indigo-600 font-bold px-2.5 py-1 rounded-lg">บัญชีรับเงิน</span>
+                        </div>
+                        <div class="space-y-1.5 text-sm text-gray-600">
+                            <p><span class="text-gray-400">เลขบัญชี/พร้อมเพย์:</span> <strong class="text-gray-900 font-mono text-base">${escapeHTML(acc.account_number)}</strong></p>
+                            <p><span class="text-gray-400">ชื่อบัญชี:</span> <strong class="text-gray-800">${escapeHTML(acc.account_name)}</strong></p>
+                            <p><span class="text-gray-400">เบอร์ติดต่อ:</span> ${escapeHTML(acc.phone || '-')}</p>
+                        </div>
+                        ${qrHtml}
+                    </div>
+                    <button onclick="deleteAccount(${acc.id})" class="mt-4 w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors">
+                        🗑️ ลบบัญชีนี้
+                    </button>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Error loading accounts:', e);
+    }
+}
+
+// โหลดบัญชีรับเงินเข้า Dropdown ในหน้า Billing
+async function loadPaymentOptionsForBilling() {
+    const select = document.getElementById('paymentAccountSelect');
+    if (!select) return;
+
+    try {
+        const res = await fetch('/api/payment-accounts');
+        const data = await res.json();
+        
+        select.innerHTML = '<option value="">-- ดึงข้อมูลจากบัญชีที่บันทึกไว้ --</option>';
+        
+        if (data.accounts) {
+            data.accounts.forEach(acc => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify(acc);
+                option.textContent = `🏦 ${acc.bank_name} - ${acc.account_name} (${acc.account_number})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading payment options:', error);
+    }
+}
+
+// เมื่อเลือกบัญชีจาก Dropdown ให้เติมข้อมูลลงฟอร์มอัตโนมัติ
+function onSelectSavedPaymentAccount(selectEl) {
+    if (!selectEl.value) return;
+    
+    const acc = JSON.parse(selectEl.value);
+    
+    document.getElementById('payBank').value = acc.bank_name || '';
+    document.getElementById('payAccountNo').value = acc.account_number || '';
+    document.getElementById('payName').value = acc.account_name || '';
+    document.getElementById('payPhone').value = acc.phone || '';
+    
+    // หากมีรูป QR Code ให้เลือกโหมด QR Code อัตโนมัติ
+    if (acc.qr_image) {
+        document.getElementById('payMethod').value = 'qr';
+        document.getElementById('payQrBase64').value = acc.qr_image;
+        togglePayMethod();
+    } else {
+        document.getElementById('payMethod').value = 'account';
+        togglePayMethod();
+    }
+}
 // =====================================================
 // EXPORTED BILLS SYSTEM (แก้ไขเรื่องวันหมดอายุและรูปภาพหาย)
 // =====================================================

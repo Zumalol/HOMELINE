@@ -1,17 +1,49 @@
-<div class="bg-white p-6 rounded-xl shadow-sm border md:col-span-2">
-        <h3 class="text-lg font-bold mb-4">📋 รายการพัสดุรอผู้เช่ามารับ</h3>
-        <!-- เพิ่ม div ครอบตรงนี้ -->
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[500px]">
-                <thead>
-                    <tr class="bg-gray-100 border-b">
-                        <th class="p-3 whitespace-nowrap">ห้อง</th>
-                        <th class="p-3 whitespace-nowrap">Tracking / ขนส่ง</th>
-                        <th class="p-3 whitespace-nowrap">สถานะ</th>
-                        <th class="p-3 text-center whitespace-nowrap">ยืนยัน</th>
-                    </tr>
-                </thead>
-                <tbody id="parcel-table-body"></tbody>
-            </table>
+<!-- parcel.html -->
+<div class="container mx-auto p-4 md:p-6 max-w-6xl">
+    <div class="flex items-center justify-between mb-6 border-b pb-4">
+        <div>
+            <h2 class="text-2xl font-extrabold text-gray-800 flex items-center gap-2">
+                💳 จัดการบัญชีรับเงิน / พร้อมเพย์
+            </h2>
+            <p class="text-sm text-gray-500">บันทึกข้อมูลบัญชีธนาคารและ QR Code เพื่อนำไปใช้เลือกรวดเร็วในหน้าออกบิล</p>
         </div>
     </div>
+
+    <!-- ฟอร์มเพิ่มบัญชีรับเงิน -->
+    <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 mb-8">
+        <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+            <span>➕</span> เพิ่มบัญชีรับเงินใหม่
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">ธนาคาร / ช่องทางชำระเงิน</label>
+                <input type="text" id="bankName" placeholder="เช่น ธนาคารกสิกรไทย, พร้อมเพย์" class="w-full border border-gray-300 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">เลขบัญชี / เบอร์พร้อมเพย์</label>
+                <input type="text" id="accNumber" placeholder="เช่น 123-4-56789-0 หรือ 0812345678" class="w-full border border-gray-300 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">ชื่อบัญชีผู้รับเงิน</label>
+                <input type="text" id="accName" placeholder="ชื่อ-นามสกุล เจ้าของบัญชี" class="w-full border border-gray-300 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">เบอร์โทรศัพท์ติดต่อ</label>
+                <input type="text" id="phoneNum" placeholder="เบอร์โทรศัพท์" class="w-full border border-gray-300 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-xs font-semibold text-gray-600 mb-1">รูป QR Code รับเงิน (ถ้ามี)</label>
+                <input type="file" id="qrImageInput" accept="image/*" class="w-full border border-gray-200 p-2 rounded-xl text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+            </div>
+            <button onclick="savePaymentAccount()" class="md:col-span-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition-all duration-200 flex items-center justify-center gap-2 mt-2">
+                💾 บันทึกบัญชีรับเงิน
+            </button>
+        </div>
+    </div>
+
+    <!-- รายการบัญชีรับเงินแบบ Card -->
+    <h3 class="font-bold text-gray-800 mb-4 text-lg">📋 บัญชีที่บันทึกไว้</h3>
+    <div id="accountCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- การ์ดบัญชีจะถูก Render ผ่าน JavaScript ที่นี่ -->
+    </div>
+</div>
