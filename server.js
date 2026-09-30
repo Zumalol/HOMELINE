@@ -9,7 +9,13 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const cloudinary = require('cloudinary').v2;
 
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.API_KEY,
+  api_secret: process.env.API_SECRET
+});
 /*
 |--------------------------------------------------------------------------
 | Middleware
@@ -55,6 +61,14 @@ pool.connect()
     .then(async client => {
         console.log('✅ เชื่อมต่อฐานข้อมูล PostgreSQL สำเร็จ');
         await client.query(`
+            CREATE TABLE IF NOT EXISTS bills (
+                id SERIAL PRIMARY KEY,
+                room_number VARCHAR(50) NOT NULL,
+                bill_url TEXT NOT NULL,
+                public_id VARCHAR(255),
+                status VARCHAR(50) DEFAULT 'ค้างชำระ',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS line_friends (
                 user_id VARCHAR(100) PRIMARY KEY,
                 display_name VARCHAR(255)
@@ -838,26 +852,25 @@ app.post('/webhook', async (req, res) => {
                 }
             }
             
-           // 🟢 ดักจับคำว่า "ตรวจสอบบิลค้างชำระ"
+           
+            // 🟢 ดักจับคำว่า "ตรวจสอบบิลค้างชำระ"
             if (event.type === 'message' && event.message.type === 'text' && event.message.text === 'ตรวจสอบบิลค้างชำระ') {
                 const userId = event.source.userId;
 
                 try {
-                    // 1. ค้นหาห้องจาก line_id ของผู้เช่า โดยอ้างอิงผ่านชื่อ tenant ในตาราง rooms
                     const roomRes = await pool.query(`
                         SELECT r.* 
                         FROM rooms r
                         JOIN tenants t ON r.tenant = t.name
                         WHERE t.line_id = $1
-                    `, [userId]); //[cite: 31]
+                    `, [userId]);
 
-                    // กรณีไม่พบข้อมูลห้องพักที่ผูกกับบัญชี LINE นี้
                     if (roomRes.rows.length === 0) {
                         await fetch('https://api.line.me/v2/bot/message/reply', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` //[cite: 31]
+                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
                             },
                             body: JSON.stringify({
                                 replyToken: event.replyToken,
@@ -869,34 +882,14 @@ app.post('/webhook', async (req, res) => {
 
                     const room = roomRes.rows[0];
 
-                    // 2. ตรวจสอบสถานะการชำระเงินของห้อง
-                    if (room.payment_status !== 'ค้างชำระ') { //[cite: 31]
-                        await fetch('https://api.line.me/v2/bot/message/reply', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` //[cite: 31]
-                            },
-                            body: JSON.stringify({
-                                replyToken: event.replyToken,
-                                messages: [{ type: 'text', text: `✅ ห้อง ${room.number} ของคุณไม่มียอดค้างชำระในระบบครับ` }]
-                            })
-                        });
-                        return;
-                    }
+                    // ดึงบิลค้างชำระจาก PostgreSQL แทนการอ่านจากโฟลเดอร์ local
+                    const billsRes = await pool.query(`
+                        SELECT * FROM bills 
+                        WHERE room_number = $1 AND status = 'ค้างชำระ' 
+                        ORDER BY id DESC
+                    `, [room.number]);
 
-                    // 3. ค้นหาไฟล์บิลของห้องนี้ในโฟลเดอร์ exports
-                    const exportDir = path.join(__dirname, 'public', 'exports'); //[cite: 31]
-                    let unPaidBills = [];
-                    
-                    if (fs.existsSync(exportDir)) {
-                        const files = fs.readdirSync(exportDir);
-                        // กรองเฉพาะไฟล์รูปภาพ (png/jpg) ที่ชื่อขึ้นต้นด้วย "Bill_Room_{เลขห้อง}_"
-                        unPaidBills = files.filter(file => 
-                            file.startsWith(`Bill_Room_${room.number}_`) && 
-                            (file.endsWith('.png') || file.endsWith('.jpg')) //[cite: 31]
-                        );
-                    }
+                    const unPaidBills = billsRes.rows;
 
                     if (unPaidBills.length === 0) {
                         await fetch('https://api.line.me/v2/bot/message/reply', {
@@ -907,70 +900,56 @@ app.post('/webhook', async (req, res) => {
                             },
                             body: JSON.stringify({
                                 replyToken: event.replyToken,
-                                messages: [{ type: 'text', text: `⚠️ ห้อง ${room.number} มีสถานะค้างชำระ แต่ไม่พบไฟล์บิลในระบบ กรุณาติดต่อแอดมินครับ` }]
+                                messages: [{ type: 'text', text: `✅ ห้อง ${room.number} ของคุณไม่มีบิลค้างชำระในระบบครับ` }]
                             })
                         });
                         return;
                     }
 
-                    // 4. สร้างการ์ด Flex Message (Carousel) แสดงบิลค้างชำระทั้งหมด
-                    const host = req.get('host');
-                    const flexContents = unPaidBills.map(billFile => {
-                        let fileUrl = `https://${host}/exports/${billFile}`; //[cite: 31]
-                        
-                        return {
-                            type: "bubble",
-                            size: "mega",
-                            header: {
-                                type: "box",
-                                layout: "vertical",
-                                backgroundColor: "#ef4444", // ตกแต่งหัวการ์ดด้วยสีแดง (แจ้งเตือนค้างชำระ)
-                                paddingAll: "lg",
-                                contents: [
-                                    { type: "text", text: `⚠️ บิลค้างชำระ ห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "lg" }
-                                ]
-                            },
-                            hero: {
-                                type: "image",
-                                url: fileUrl,
-                                size: "full",
-                                aspectRatio: "3:4", // ปรับอัตราส่วนให้เหมาะกับรูปบิลแนวตั้ง
-                                aspectMode: "fit",
-                                backgroundColor: "#f9fafb",
-                                action: {
-                                    type: "uri",
-                                    label: "ดูรูปบิลขนาดเต็ม",
-                                    uri: fileUrl
-                                }
-                            },
-                            body: {
-                                type: "box",
-                                layout: "vertical",
-                                paddingAll: "md",
-                                contents: [
-                                    { type: "text", text: "สถานะ: ⏳ ค้างชำระ", color: "#ef4444", weight: "bold", size: "md", align: "center" },
-                                    { type: "text", text: "หากต้องการชำระเงิน ที่ละบิลให้กดเมนู ชำระเงินทั้งหมด", color: "#6b7280", size: "sm", align: "center", margin: "md", wrap: true }
-                                ]
-                            }
-                        };
-                    });
+                    const flexContents = unPaidBills.map(bill => ({
+                        type: "bubble",
+                        size: "mega",
+                        header: {
+                            type: "box",
+                            layout: "vertical",
+                            backgroundColor: "#ef4444",
+                            paddingAll: "lg",
+                            contents: [
+                                { type: "text", text: `⚠️ บิลค้างชำระ ห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "lg" }
+                            ]
+                        },
+                        hero: {
+                            type: "image",
+                            url: bill.bill_url,
+                            size: "full",
+                            aspectRatio: "3:4",
+                            aspectMode: "fit",
+                            backgroundColor: "#f9fafb",
+                            action: { type: "uri", label: "ดูรูปบิลขนาดเต็ม", uri: bill.bill_url }
+                        },
+                        body: {
+                            type: "box",
+                            layout: "vertical",
+                            paddingAll: "md",
+                            contents: [
+                                { type: "text", text: "สถานะ: ⏳ ค้างชำระ", color: "#ef4444", weight: "bold", size: "md", align: "center" },
+                                { type: "text", text: "หากต้องการชำระเงิน ที่ละบิลให้กดเมนู ชำระเงินทั้งหมด", color: "#6b7280", size: "sm", align: "center", margin: "md", wrap: true }
+                            ]
+                        }
+                    }));
 
-                    // ส่ง Flex Message ตอบกลับผู้ใช้งาน
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` //[cite: 31]
+                            'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
                         },
                         body: JSON.stringify({
                             replyToken: event.replyToken,
                             messages: [{
                                 type: "flex",
                                 altText: `รายการบิลค้างชำระ ห้อง ${room.number}`,
-                                contents: {
-                                    type: "carousel",
-                                    contents: flexContents
-                                }
+                                contents: { type: "carousel", contents: flexContents }
                             }]
                         })
                     });
@@ -1309,75 +1288,38 @@ app.get(`${apiPrefix}/line-friends`, async (req, res) => {
 |--------------------------------------------------------------------------
 */
 app.get(`${apiPrefix}/exported-bills`, async (req, res) => {
-    const exportDir = path.join(__dirname, 'public', 'exports');
-    
-    // ตรวจสอบว่ามีโฟลเดอร์ exports หรือไม่
-    if (!fs.existsSync(exportDir)) {
-        return res.json({ success: true, files: [] });
-    }
-    
     try {
-        // 1. ดึงสถานะการชำระเงินของทุกห้องจากฐานข้อมูลมาเตรียมไว้
-        const roomsResult = await pool.query('SELECT number, payment_status FROM rooms');
-        const roomStatusMap = {};
-        roomsResult.rows.forEach(r => {
-            roomStatusMap[r.number] = r.payment_status || 'ค้างชำระ';
-        });
-
-        // 2. อ่านไฟล์ทั้งหมดในโฟลเดอร์
-        fs.readdir(exportDir, (err, files) => {
-            if (err) {
-                console.error('Error reading exports directory:', err);
-                return res.status(500).json({ success: false, message: 'ไม่สามารถอ่านโฟลเดอร์ exports ได้' });
-            }
-            
-            // 3. กรองเอาเฉพาะไฟล์รูปภาพ .png และ .jpg
-            const imageFiles = files
-                .filter(file => file.endsWith('.png') || file.endsWith('.jpg'))
-                .map(file => {
-                    let paymentStatus = 'ค้างชำระ';
-                    
-                    // สกัดเลขห้องจากชื่อไฟล์ (รูปแบบ: Bill_Room_101_169...png)
-                    const match = file.match(/Bill_Room_(.+?)_\d+\.(png|jpg)$/);
-                    
-                    if (match && match[1]) {
-                        const roomNumber = match[1];
-                        // นำเลขห้องไปเทียบกับสถานะที่ดึงมาจากฐานข้อมูล
-                        if (roomStatusMap[roomNumber]) {
-                            paymentStatus = roomStatusMap[roomNumber];
-                        }
-                    }
-
-                    return {
-                        name: file,
-                        url: `/exports/${file}`,
-                        payment_status: paymentStatus // ส่งสถานะที่อัปเดตแล้วไปให้ Frontend
-                    };
-                });
-                
-            res.json({ success: true, files: imageFiles });
-        });
+        const result = await pool.query('SELECT * FROM bills ORDER BY id DESC');
+        const imageFiles = result.rows.map(bill => ({
+            id: bill.id,
+            name: `Bill_Room_${bill.room_number}`,
+            url: bill.bill_url,
+            payment_status: bill.status
+        }));
+        res.json({ success: true, files: imageFiles });
     } catch (error) {
         console.error('Database Error in exported bills:', error);
         res.status(500).json({ success: false, message: 'Database error' });
     }
 });
 
-app.delete(`${apiPrefix}/exported-bills/:filename`, (req, res) => {
-    const fileName = req.params.filename;
-    const filePath = path.join(__dirname, 'public', 'exports', fileName);
-    
-    // ตรวจสอบว่ามีไฟล์อยู่จริงหรือไม่ก่อนทำการลบ
-    if (fs.existsSync(filePath)) {
-        fs.unlink(filePath, (err) => {
-            if (err) {
-                console.error('Error deleting file:', err);
-                return res.status(500).json({ success: false, message: 'ไม่สามารถลบไฟล์บิลได้' });
+app.delete(`${apiPrefix}/exported-bills/:id`, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const billRes = await pool.query('SELECT * FROM bills WHERE id = $1', [id]);
+        if (billRes.rows.length > 0) {
+            const bill = billRes.rows[0];
+            if (bill.public_id) {
+                await cloudinary.uploader.destroy(bill.public_id);
             }
-            res.json({ success: true, message: 'ลบบิลออกจากระบบสำเร็จ' });
-        });
-    } else {
-        res.status(404).json({ success: false, message: 'ไม่พบไฟล์บิลที่ต้องการลบ' });
+            await pool.query('DELETE FROM bills WHERE id = $1', [id]);
+            res.json({ success: true, message: 'ลบบิลออกจากระบบและ Cloudinary สำเร็จ' });
+        } else {
+            res.status(404).json({ success: false, message: 'ไม่พบไฟล์บิลที่ต้องการลบ' });
+        }
+    } catch (error) {
+        console.error('Delete Bill Error:', error);
+        res.status(500).json({ success: false, message: 'ไม่สามารถลบไฟล์บิลได้' });
     }
 });
 /*
@@ -1546,6 +1488,20 @@ function getThaiBahtText(amount) {
         }
     }
     return text + 'บาทถ้วน';
+}
+
+// ฟังก์ชันสำหรับอัปโหลด Buffer รูปภาพขึ้น Cloudinary
+function uploadBufferToCloudinary(buffer, folderName = 'dorm_bills') {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: folderName, resource_type: 'image' },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result);
+            }
+        );
+        uploadStream.end(buffer);
+    });
 }
 
 // ฟังก์ชันสร้าง Workbook ตามแบบฟอร์มในภาพ
@@ -1736,7 +1692,9 @@ async function createBillingImage(room, inputs, filePath) {
     </html>
     `;
 
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox','--disable-dev-shm-usage','--single-process'] });
+    const browser = await puppeteer.launch({ 
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process'] 
+    });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
     
@@ -1744,8 +1702,13 @@ async function createBillingImage(room, inputs, filePath) {
     const boundingBox = await bodyHandle.boundingBox();
     await page.setViewport({ width: 880, height: Math.ceil(boundingBox.height) });
 
-    await page.screenshot({ path: filePath, type: 'png' });
+    // รับภาพเป็น Buffer แทนการเซฟลงดิสก์ local
+    const imageBuffer = await page.screenshot({ type: 'png' });
     await browser.close(); 
+
+    // อัปโหลดขึ้น Cloudinary
+    const uploadResult = await uploadBufferToCloudinary(imageBuffer);
+    return uploadResult; // จะได้ออบเจกต์ที่มี secure_url และ public_id
 }
 
 // =====================================================
@@ -1753,7 +1716,6 @@ async function createBillingImage(room, inputs, filePath) {
 // =====================================================
 
 app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
-
     const billDueDate = req.body.billDueDate || req.body.bill_due_date || req.body.dueDate;
     const finePerDay = Number(req.body.finePerDay || req.body.fine_per_day) || 0;
     const { dormName, roomNumber, lineUserId } = req.body;
@@ -1770,17 +1732,17 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
         
         const room = result.rows[0];
 
-        const exportDir = path.join(__dirname, 'public', 'exports');
-        if (!fs.existsSync(exportDir)) {
-            fs.mkdirSync(exportDir, { recursive: true });
-        }
+        // สร้างรูปบิลและอัปโหลดขึ้น Cloudinary
+        const uploadResult = await createBillingImage(room, req.body);
+        const fileUrl = uploadResult.secure_url;
 
-        const fileName = `Bill_Room_${room.number}_${Date.now()}.png`;
-        const filePath = path.join(exportDir, fileName);
-        
-        await createBillingImage(room, req.body, filePath);
+        // บันทึก URL บิลลงในตาราง bills
+        await pool.query(`
+            INSERT INTO bills (room_number, bill_url, public_id, status)
+            VALUES ($1, $2, $3, 'ค้างชำระ')
+        `, [room.number, fileUrl, uploadResult.public_id]);
 
-        // บันทึกสถานะบิล, วันครบกำหนด, อัตราค่าปรับ และข้อมูลบิลต้นฉบับ
+        // อัปเดตสถานะในตาราง rooms
         await pool.query(`
             UPDATE rooms 
             SET payment_status = 'ค้างชำระ', 
@@ -1790,29 +1752,17 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
             WHERE id = $4
         `, [billDueDate || null, finePerDay || 0, JSON.stringify(req.body), room.id]);
 
-
-
         if (lineUserId) {
             const formattedMonth = formatThaiMonth(req.body.billMonth);
-            
-            let fileUrl = `${req.protocol}://${req.get('host')}/exports/${fileName}`;
-            fileUrl = fileUrl.replace("http://", "https://");
-
-            // โครงสร้างข้อความพื้นฐาน
             let messageText = `📝 แจ้งยอดค่าใช้จ่าย ประจำเดือน: ${formattedMonth}\n🚪 ห้อง: ${room.number}\n👤 ผู้เช่า: ${room.tenant}`;
 
-            // แสดงวันที่กำหนดชำระและค่าปรับ เฉพาะในกรณีที่มีการระบุ billDueDate เข้ามาเท่านั้น
             if (billDueDate) {
                 const d = new Date(billDueDate);
                 const dueDateFormatted = !isNaN(d.getTime()) 
                     ? d.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' }) 
                     : billDueDate;
-
                 messageText += `\n📅 กำหนดชำระภายใน: ${dueDateFormatted}`;
-                
-                if (finePerDay > 0) {
-                    messageText += `\n⚠️ ค่าปรับกรณีเกินกำหนด: ${finePerDay} บาท/วัน`;
-                }
+                if (finePerDay > 0) messageText += `\n⚠️ ค่าปรับกรณีเกินกำหนด: ${finePerDay} บาท/วัน`;
             }
             
             messageText += `\n\nตรวจสอบรายละเอียดบิลจากรูปภาพด้านล่างครับ 👇`;
