@@ -357,7 +357,7 @@ function filterDashboardRooms() {
 window.filterDashboardRooms = filterDashboardRooms;
 
 // =====================================================
-// EXPORTED BILLS SYSTEM
+// EXPORTED BILLS SYSTEM 
 // =====================================================
 async function fetchExportedBills() {
     const grid = document.getElementById('bills-grid');
@@ -373,7 +373,7 @@ async function fetchExportedBills() {
             throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลบิลได้');
         }
         
-        if (data.files.length === 0) {
+        if (!data.files || data.files.length === 0) {
             grid.innerHTML = `
                 <div class="col-span-full text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
                     <div class="text-4xl mb-2 opacity-50">📂</div>
@@ -387,25 +387,54 @@ async function fetchExportedBills() {
         const sortedFiles = data.files.sort((a, b) => b.name.localeCompare(a.name));
         
         grid.innerHTML = sortedFiles.map(file => {
-            // 📍 เพิ่ม Logic จัดการสถานะบิล (ถ้า Backend ไม่ได้ส่งค่ามา ให้ค่าเริ่มต้นเป็น "ค้างชำระ")
-            const paymentStatus = file.payment_status || 'ค้างชำระ';
-            let statusBadge = '';
+            // 📍 1. จัดการตำแหน่งรูปภาพที่บิลถูกเซฟไว้ (Image Path Resolution)
+            const imageUrl = file.url || (file.path ? file.path : `/exports/${file.name}`);
 
-            // 📍 เพิ่ม Logic เช็ควันหมดอายุแบบ Real-time
+            // 📍 2. แก้ไข Bug: เปลี่ยนจาก const เป็น let เพื่อรองรับการอัปเดตสถานะ
+            let paymentStatus = file.payment_status || 'ค้างชำระ';
+            let overdueDays = 0;
+            let calculatedFine = 0;
+            const finePerDay = Number(file.fine_per_day || file.finePerDay || 0);
+
+            // 📍 3. ตรวจจับวันเวลา และคำนวณค่าปรับอัตโนมัติ
             if (file.due_date && paymentStatus !== 'ชำระเงินแล้ว') {
                 const today = new Date();
-                today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็น 00:00:00 เพื่อเทียบเฉพาะวันที่
+                today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็น 00:00:00 เพื่อเปรียบเทียบเฉพาะวันที่
+                
                 const dueDate = new Date(file.due_date);
+                dueDate.setHours(0, 0, 0, 0);
                 
                 if (today > dueDate) {
                     paymentStatus = 'เกินกำหนด';
+                    // คำนวณจำนวนวันที่เกินกำหนด
+                    const diffTime = today.getTime() - dueDate.getTime();
+                    overdueDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // คำนวณยอดค่าปรับสะสมอัตโนมัติ
+                    calculatedFine = overdueDays * finePerDay;
                 }
             }
+
+            // แสดงผล Badge สถานะและค่าปรับ
+            let statusBadge = '';
+            let fineBadgeInfo = '';
 
             if (paymentStatus === 'ชำระเงินแล้ว') {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-emerald-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-emerald-400/50 z-10">✅ ชำระเงินแล้ว</span>`;
             } else if (paymentStatus === 'เกินกำหนด') {
-                statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-rose-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-rose-400/50 z-10 animate-pulse">🚨 เกินกำหนดชำระ</span>`;
+                statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-rose-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-rose-400/50 z-10 animate-pulse">🚨 เกินกำหนด ${overdueDays} วัน</span>`;
+                
+                if (calculatedFine > 0) {
+                    fineBadgeInfo = `
+                        <div class="mt-2 bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs text-rose-700">
+                            <div class="flex justify-between items-center font-bold">
+                                <span>⚠️ ค่าปรับค้างชำระ (${overdueDays} วัน):</span>
+                                <span class="text-sm font-black text-rose-600">+${calculatedFine.toLocaleString()} ฿</span>
+                            </div>
+                            <div class="text-[10px] text-rose-500 mt-0.5">อัตราค่าปรับ ${finePerDay.toLocaleString()} ฿/วัน</div>
+                        </div>
+                    `;
+                }
             } else {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-orange-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-orange-400/50 z-10 animate-pulse">⏳ ค้างชำระ</span>`;
             }
@@ -413,32 +442,35 @@ async function fetchExportedBills() {
             return `
             <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-indigo-200 transition-all duration-300 group flex flex-col relative">
                 
-                <!-- รูปภาพบิล -->
-                <a href="${file.url}" target="_blank" class="block overflow-hidden bg-gray-50 relative">
-                    <img src="${file.url}" alt="${file.name}" class="w-full h-56 object-cover object-top group-hover:scale-105 transition-transform duration-500">
+                <!-- รูปภาพบิล (อ้างอิงตำแหน่งไฟล์ที่เซฟไว้) -->
+                <a href="${imageUrl}" target="_blank" class="block overflow-hidden bg-gray-50 relative">
+                    <img src="${imageUrl}" alt="${escapeHTML(file.name)}" class="w-full h-56 object-cover object-top group-hover:scale-105 transition-transform duration-500" onerror="this.src='/assets/images/bill-placeholder.png'; this.onerror=null;">
                     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300"></div>
                     
-                    <!-- 📍 แสดงป้ายสถานะทับบนรูปภาพ -->
                     ${statusBadge}
                 </a>
                 
                 <div class="p-4 flex flex-col flex-1">
-                    <!-- ชื่อไฟล์ -->
-                    <p class="text-sm font-bold text-gray-800 truncate mb-4" title="${file.name}">
-                        ${file.name}
+                    <p class="text-sm font-bold text-gray-800 truncate mb-1" title="${escapeHTML(file.name)}">
+                        ${escapeHTML(file.name)}
                     </p>
                     
-                    <!-- กลุ่มปุ่มกด -->
-                    <div class="flex gap-2 mt-auto">
-                        <a href="${file.url}" target="_blank" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 py-2.5 rounded-xl hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-all shadow-sm hover:shadow active:scale-95">
+                    ${file.due_date ? `<p class="text-xs text-gray-500 mb-2">📅 กำหนดชำระ: ${new Date(file.due_date).toLocaleDateString('th-TH')}</p>` : ''}
+                    
+                    <!-- แสดงข้อมูลยอดค่าปรับอัตโนมัติ -->
+                    ${fineBadgeInfo}
+                    
+                    <!-- ปุ่มกดจัดการบิล -->
+                    <div class="flex gap-2 mt-4 pt-2 border-t border-gray-100">
+                        <a href="${imageUrl}" target="_blank" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 py-2.5 rounded-xl hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-all shadow-sm hover:shadow active:scale-95">
                             👁️ ดูรูป
                         </a>
                         
-                        <a href="${file.url}" download class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm hover:shadow-md active:scale-95">
+                        <a href="${imageUrl}" download class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm hover:shadow-md active:scale-95">
                             ⬇️ โหลด
                         </a>
                         
-                        <button onclick="deleteExportedBill('${file.name}')" class="flex items-center justify-center px-3.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm hover:shadow active:scale-95" title="ลบบิลนี้">
+                        <button onclick="deleteExportedBill('${escapeHTML(file.name)}')" class="flex items-center justify-center px-3.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm hover:shadow active:scale-95" title="ลบบิลนี้">
                             🗑️
                         </button>
                     </div>
