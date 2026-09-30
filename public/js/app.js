@@ -128,7 +128,8 @@ async function switchTab(tab) {
     else if (tab === 'parcel') {
         if (title) title.innerText = 'ระบบจัดการพัสดุ (แจ้งเตือนผู้เช่า)';
         await loadComponent('main-content', '/pages/parcel.html');
-        await fetchParcelPage();
+        if (typeof fetchParcelPage === 'function') await fetchParcelPage();
+        await loadAccounts(); // เรียกโหลดการ์ดบัญชีธนาคาร
     }
     // ANNOUNCEMENT
     else if (tab === 'announcement') {
@@ -391,7 +392,7 @@ async function savePaymentAccount() {
 // PAYMENT ACCOUNT MANAGEMENT
 // =====================================================
 
-// โหลดรายการบัญชีรับเงินมาแสดงในการ์ด (หน้า Parcel)
+// โหลดรายการบัญชีรับเงินมาแสดงในการ์ด
 async function loadAccounts() {
     const container = document.getElementById('accountCardsContainer');
     if (!container) return;
@@ -400,7 +401,10 @@ async function loadAccounts() {
         const res = await fetch('/api/payment-accounts');
         const data = await res.json();
         
-        if (!data.accounts || data.accounts.length === 0) {
+        // รองรับทั้งกรณี data เป็น Array โดยตรง หรือซ้อนอยู่ใน accounts / data
+        const accounts = Array.isArray(data) ? data : (data.accounts || data.data || []);
+        
+        if (accounts.length === 0) {
             container.innerHTML = `
                 <div class="col-span-full text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                     <p class="text-gray-400 font-medium">ยังไม่มีข้อมูลบัญชีรับเงิน</p>
@@ -408,7 +412,7 @@ async function loadAccounts() {
             return;
         }
 
-        container.innerHTML = data.accounts.map(acc => {
+        container.innerHTML = accounts.map(acc => {
             const qrHtml = acc.qr_image 
                 ? `<div class="mt-3 p-2 bg-gray-50 rounded-xl border border-gray-100 flex justify-center">
                     <img src="${acc.qr_image}" class="h-36 object-contain rounded-lg">
@@ -451,8 +455,11 @@ async function loadPaymentOptionsForBilling() {
         
         select.innerHTML = '<option value="">-- ดึงข้อมูลจากบัญชีที่บันทึกไว้ --</option>';
         
-        if (data.accounts) {
-            data.accounts.forEach(acc => {
+        // รองรับทั้งกรณี data เป็น Array โดยตรง หรือซ้อนอยู่ใน accounts / data
+        const accounts = Array.isArray(data) ? data : (data.accounts || data.data || []);
+        
+        if (accounts.length > 0) {
+            accounts.forEach(acc => {
                 const option = document.createElement('option');
                 option.value = JSON.stringify(acc);
                 option.textContent = `🏦 ${acc.bank_name} - ${acc.account_name} (${acc.account_number})`;
@@ -1666,6 +1673,9 @@ async function fetchBillingOptions() {
             lineSelect.innerHTML = '<option value="">-- ไม่ส่ง LINE / พิมพ์ชื่อเพื่อค้นหา --</option>' + 
                 lineData.friends.map(f => `<option value="${f.user_id}">${escapeHTML(f.display_name)}</option>`).join('');
         }
+
+        // เพิ่มการโหลดตัวเลือกบัญชีรับเงินเข้า Dropdown
+        await loadPaymentOptionsForBilling();
     } catch (e) {
         console.error('Error fetching billing options:', e);
     }
