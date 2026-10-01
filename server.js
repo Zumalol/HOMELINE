@@ -2178,43 +2178,25 @@ async function checkAndSendDueDateReminders() {
             const fineRate = Number(room.fine_per_day || 0);
 
             if (diffDays === 0) {
-                // แจ้งเตือนในวันครบกำหนด (Due Date Today)
                 const text = `⏰ แจ้งเตือนครบกำหนดชำระเงินวันนี้!\n🏢 ห้อง: ${room.number}\n👤 คุณ: ${room.tenant}\n\nวันนี้เป็นวันครบกำหนดชำระค่าเช่าห้องพักแล้วครับ${fineRate > 0 ? `\n⚠️ *กรณีเกินกำหนดจะมีค่าปรับ ${fineRate} บาท/วัน` : ''}\nกรุณาชำระเงินและส่งสลิปเพื่อยืนยันครับ`;
-                
                 await sendLinePushMessage(room.line_id, text);
             } else if (diffDays > 0 && fineRate > 0) {
-                // 1. อัปเดตสลิปอัตโนมัติ (สร้างรูปบิลใหม่เพื่อรวมค่าปรับล่าสุด)
                 if (room.last_bill_data) {
                     try {
                         const billData = JSON.parse(room.last_bill_data);
-                        const exportDir = path.join(__dirname, 'public', 'exports');
+                        const uploadResult = await createBillingImage(room, billData);
                         
-                        // ค้นหาและลบรูปบิลใบเดิมของห้องนี้ทิ้ง
-                        if (fs.existsSync(exportDir)) {
-                            const files = fs.readdirSync(exportDir);
-                            const oldBills = files.filter(f => f.startsWith(`Bill_Room_${room.number}_`));
-                            oldBills.forEach(f => fs.unlinkSync(path.join(exportDir, f)));
-                        }
-
-                        // เปลี่ยนลอจิกเดิมใน ให้สร้างสำเร็จก่อนค่อยลบ
-                        const newFileName = `Bill_Room_${room.number}_${Date.now()}.png`;
-                        const newFilePath = path.join(exportDir, newFileName);
-
-                        // 1. สร้างบิลใหม่ให้สำเร็จก่อน
-                        await createBillingImage(room, billData, newFilePath);
-
-                        // 2. เมื่อสร้างสำเร็จแล้ว ค่อยตามลบบิลเก่าออก
-                        if (fs.existsSync(exportDir)) {
-                            const files = fs.readdirSync(exportDir);
-                            const oldBills = files.filter(f => f.startsWith(`Bill_Room_${room.number}_`) && f !== newFileName);
-                            oldBills.forEach(f => fs.unlinkSync(path.join(exportDir, f)));
+                        if (uploadResult && uploadResult.secure_url) {
+                            await pool.query(
+                                `UPDATE bills SET bill_url = $1, public_id = $2 WHERE room_number = $3 AND status = 'ค้างชำระ'`,
+                                [uploadResult.secure_url, uploadResult.public_id, room.number]
+                            );
                         }
                     } catch (e) {
                         console.error(`Failed to regenerate updated bill for room ${room.number}:`, e);
                     }
                 }
 
-                // 2. แจ้งเตือนเมื่อชำระเกินกำหนด (Overdue Alert)
                 const currentFine = diffDays * fineRate;
                 const text = `⚠️ แจ้งเตือนเกินกำหนดชำระเงิน!\n🏢 ห้อง: ${room.number}\n👤 คุณ: ${room.tenant}\n\nเกินกำหนดชำระมาแล้ว ${diffDays} วัน\n💸 มีค่าปรับล่าช้าสะสม: ${currentFine.toLocaleString()} บาท (วันละ ${fineRate} บาท)\n\nระบบได้อัปเดตยอดค่าปรับลงในสลิปบิลของคุณเรียบร้อยแล้ว\nพิมพ์ "ตรวจสอบบิลค้างชำระ" หรือ "ชำระเงินทั้งหมด" เพื่อดูสลิปล่าสุดและทำรายการครับ`;
                 
