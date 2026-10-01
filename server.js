@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const ExcelJS = require('exceljs');
+const line = require('@line/bot-sdk');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
@@ -342,6 +343,128 @@ app.get('/api/tenants', async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
+});
+// =====================================================
+// LINE REPAIR FLOW & WEBHOOK (ฝั่ง Server)
+// =====================================================
+
+// ตัวแปรสำหรับเก็บ State การแจ้งซ่อมของผู้เช่าชั่วคราว
+const userRepairStates = {}; 
+
+const ADMIN_LINE_ID = process.env.ADMIN_LINE_ID || 'YOUR_ADMIN_LINE_USER_ID';
+
+// ฟังก์ชันดักจับและประมวลผลข้อความจาก LINE Webhook
+async function handleLineWebhookEvent(event, client, db) {
+    const userId = event.source.userId;
+    const userMessage = event.message?.text?.trim();
+
+    // 1. ถ้าผู้เช่าพิมพ์ว่า "แจ้งซ่อม"
+    if (event.type === 'message' && event.message.type === 'text' && userMessage === 'แจ้งซ่อม') {
+        // ตั้งสถานะผู้เช่าเป็นกำลังกรอกรายละเอียดแจ้งซ่อม
+        userRepairStates[userId] = { step: 'WAITING_DETAIL', details: '', image: null };
+        
+        await client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: '🔧 **ระบบแจ้งซ่อม**\n\nกรุณาพิมพ์รายละเอียดปัญหาที่ต้องการแจ้งซ่อม (เช่น ท่อน้ำรั่ว, แอร์ไม่เย็น) พร้อมแนบรูปภาพถ่ายปัญหา (ถ้ามี) มาได้เลยครับ'
+        });
+        return;
+    }
+
+    // 2. ถ้าผู้เช่าอยู่ในสถานะการแจ้งซ่อม (ส่งข้อความรายละเอียด หรือส่งรูปภาพ)
+    if (userRepairStates[userId] && userRepairStates[userId].step === 'WAITING_DETAIL') {
+        
+        // ถ้าผู้ใช้ส่งรูปภาพเข้ามา
+        if (event.message.type === 'image') {
+            try {
+                const stream = await client.getMessageContent(event.message.id);
+                const chunks = [];
+                for await (const chunk of stream) {
+                    chunks.push(chunk);
+                }
+                const buffer = Buffer.concat(chunks);
+                // แปลงรูปเป็น Base64
+                userRepairStates[userId].image = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+            } catch (err) {
+                console.error('Error downloading LINE image:', err);
+            }
+        } 
+        // ถ้าผู้ใช้ส่งข้อความอธิบายเข้ามา
+        else if (event.message.type === 'text') {
+            userRepairStates[userId].details = userMessage;
+        }
+
+        // ค้นหาเลขห้องของผู้เช่าจาก LINE ID ในฐานข้อมูล
+        const tenantRoom = await new Promise((resolve) => {
+            db.get(`SELECT number FROM rooms WHERE line_id = ? OR tenant LIKE ?`, [userId, `%${userId}%`], (err, row) => {
+                resolve(row ? row.number : 'ไม่ระบุห้อง');
+            });
+        });
+
+        const repairData = userRepairStates[userId];
+
+        // บันทึกลงฐานข้อมูล Repaired Table
+        db.run(
+            `INSERT INTO repairs (room_number, description, image_data, status, created_at) VALUES (?, ?, ?, ?, DATETIME('now', 'localtime'))`,
+            [tenantRoom, repairData.details || 'แจ้งซ่อมผ่าน LINE (ดูรูปแนบ)', repairData.image, 'รอดำเนินการ'],
+            async function (err) {
+                if (err) {
+                    console.error('Error saving repair to DB:', err);
+                    await client.replyMessage(event.replyToken, { type: 'text', text: '❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' });
+                    return;
+                }
+
+                // ตอบกลับผู้เช่าว่ารับเรื่องเรียบร้อยแล้ว
+                await client.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: `✅ **บันทึกการแจ้งซ่อมเรียบร้อยแล้วค่ะ**\n\n🏠 ห้อง: ${tenantRoom}\n📝 รายละเอียด: ${repairData.details || 'แนบรูปภาพ'}\n\nเจ้าหน้าที่จะเร่งดำเนินการเข้าตรวจสอบให้โดยเร็วที่สุดค่ะ`
+                });
+
+                // ล้าง State ของผู้ใช้
+                delete userRepairStates[userId];
+
+                // 🔔 ส่งการแจ้งเตือนไปยัง ADMIN_LINE_ID
+                if (ADMIN_LINE_ID) {
+                    try {
+                        await client.pushMessage(ADMIN_LINE_ID, {
+                            type: 'text',
+                            text: `🚨 **พบการแจ้งซ่อมใหม่!**\n\n🏠 **ห้อง:** ${tenantRoom}\n📝 **รายละเอียด:** ${repairData.details || 'มีการแนบรูปภาพ'}\n\n👉 ให้เข้าไปดูรายละเอียดและจัดการสถานะผ่านเว็บ:\nhttps://homeline-3693.onrender.com/`
+                        });
+                    } catch (pushErr) {
+                        console.error('Push Notification Error:', pushErr);
+                    }
+                }
+            }
+        );
+    }
+}
+
+// =====================================================
+// API ENDPOINTS FOR REPAIR SYSTEM
+// =====================================================
+
+// ดึงรายการแจ้งซ่อมทั้งหมด
+app.get('/api/repairs', (req, res) => {
+    db.all(`SELECT * FROM repairs ORDER BY id DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, repairs: rows || [] });
+    });
+});
+
+// อัปเดตสถานะการแจ้งซ่อม
+app.put('/api/repairs/:id/status', (req, res) => {
+    const { status } = req.body;
+    db.run(`UPDATE repairs SET status = ? WHERE id = ?`, [status, req.params.id], function(err) {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว' });
+    });
+});
+
+// ลบรายการแจ้งซ่อม
+app.delete('/api/repairs/:id', (req, res) => {
+    db.run(`DELETE FROM repairs WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
+    });
 });
 
 /*
