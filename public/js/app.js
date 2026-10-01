@@ -765,7 +765,7 @@ async function fetchExportedBills() {
                             ⬇️ โหลด
                         </a>
                         
-                        <button onclick="deleteExportedBill('${escapeHTML(file.name)}')" class="flex items-center justify-center px-3.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm hover:shadow active:scale-95" title="ลบบิลนี้">
+                        <button onclick="deleteExportedBill('${encodeURIComponent(file.name)}')" class="flex items-center justify-center px-3.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm hover:shadow active:scale-95" title="ลบบิลนี้">
                             🗑️
                         </button>
                     </div>
@@ -780,18 +780,24 @@ async function fetchExportedBills() {
     }
 }
 
-async function deleteExportedBill(filename) {
+async function deleteExportedBill(encodedFilename) {
+    // ถอดรหัสชื่อไฟล์กลับเป็นข้อความปกติเพื่อใช้แสดงในหน้าต่าง Confirm
+    const filename = decodeURIComponent(encodedFilename);
+
     if (!confirm(`คุณแน่ใจหรือไม่ที่จะลบบิล ${filename}? \n(การลบไฟล์นี้ไม่สามารถกู้คืนได้)`)) {
         return;
     }
 
     try {
-        // เข้ารหัสชื่อไฟล์เพื่อความปลอดภัยเมื่อส่งผ่าน URL Parameter
-        const safeFilename = encodeURIComponent(filename);
-        
-        const res = await fetch(`/api/exported-bills/${safeFilename}`, {
-            method: 'DELETE'
+        const res = await fetch(`/api/exported-bills/${encodedFilename}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            // แนบชื่อไฟล์ไปใน Body ด้วย เพื่อป้องกันปัญหากรณี Backend ถอดรหัส URL ภาษาไทยไม่สำเร็จ
+            body: JSON.stringify({ filename: filename })
         });
+        
         const data = await res.json();
 
         if (!res.ok || !data.success) {
