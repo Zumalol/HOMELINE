@@ -1537,44 +1537,97 @@ app.get(`${apiPrefix}/line-friends`, async (req, res) => {
 });
 /*
 |--------------------------------------------------------------------------
-| EXPORTED BILLS API
+| EXPORTED BILLS API 
 |--------------------------------------------------------------------------
 */
-app.get(`${apiPrefix}/exported-bills`, async (req, res) => {
+
+// 1. ดึงรายการบิลทั้งหมด
+const getExportedBillsHandler = async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM bills ORDER BY id DESC');
         const imageFiles = result.rows.map(bill => ({
             id: bill.id,
             name: `Bill_Room_${bill.room_number}`,
             url: bill.bill_url,
-            payment_status: bill.status
+            download_url: `${apiPrefix}/exported-bills/${bill.id}/download`,
+            payment_status: bill.status,
+            room_number: bill.room_number,
+            created_at: bill.created_at
         }));
         res.json({ success: true, files: imageFiles });
     } catch (error) {
         console.error('Database Error in exported bills:', error);
         res.status(500).json({ success: false, message: 'Database error' });
     }
-});
- 
-app.delete(`${apiPrefix}/exported-bills/:id`, async (req, res) => {
+};
+
+app.get(`${apiPrefix}/exported-bills`, getExportedBillsHandler);
+app.get(`${apiPrefix}/bills`, getExportedBillsHandler);
+
+// 2. API สำหรับดาวน์โหลดไฟล์บิลลงเครื่องโดยตรง (Download Proxy)
+const downloadBillHandler = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const billRes = await pool.query('SELECT * FROM bills WHERE id = $1', [id]);
+        
+        if (billRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบบิลที่ต้องการดาวน์โหลด' });
+        }
+
+        const bill = billRes.rows[0];
+        const response = await fetch(bill.bill_url);
+        
+        if (!response.ok) {
+            return res.status(400).json({ success: false, message: 'ไม่สามารถดึงรูปภาพบิลจากระบบได้' });
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const fileName = `Bill_Room_${bill.room_number}_${bill.id}.png`;
+
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Download Bill Error:', error);
+        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการดาวน์โหลดบิล' });
+    }
+};
+
+app.get(`${apiPrefix}/exported-bills/:id/download`, downloadBillHandler);
+app.get(`${apiPrefix}/bills/:id/download`, downloadBillHandler);
+
+// 3. API สำหรับลบบิล (รองรับการลบทั้งจาก Cloudinary และ PostgreSQL)
+const deleteBillHandler = async (req, res) => {
     const { id } = req.params;
     try {
         const billRes = await pool.query('SELECT * FROM bills WHERE id = $1', [id]);
         if (billRes.rows.length > 0) {
             const bill = billRes.rows[0];
+            
+            // พยายามลบรูปจาก Cloudinary (หากเกิดข้อผิดพลาด จะไม่ขัดขวางการลบใน DB)
             if (bill.public_id) {
-                await cloudinary.uploader.destroy(bill.public_id);
+                try {
+                    await cloudinary.uploader.destroy(bill.public_id);
+                } catch (cloudinaryErr) {
+                    console.warn('Cloudinary Delete Warning:', cloudinaryErr.message);
+                }
             }
+
+            // ลบข้อมูลบิลออกจาก PostgreSQL
             await pool.query('DELETE FROM bills WHERE id = $1', [id]);
-            res.json({ success: true, message: 'ลบบิลออกจากระบบและ Cloudinary สำเร็จ' });
+            return res.json({ success: true, message: 'ลบบิลออกจากระบบเรียบร้อยแล้ว' });
         } else {
-            res.status(404).json({ success: false, message: 'ไม่พบไฟล์บิลที่ต้องการลบ' });
+            return res.status(404).json({ success: false, message: 'ไม่พบไฟล์บิลที่ต้องการลบ' });
         }
     } catch (error) {
         console.error('Delete Bill Error:', error);
-        res.status(500).json({ success: false, message: 'ไม่สามารถลบไฟล์บิลได้' });
+        return res.status(500).json({ success: false, message: 'ไม่สามารถลบไฟล์บิลได้', error: error.message });
     }
-});
+};
+
+app.delete(`${apiPrefix}/exported-bills/:id`, deleteBillHandler);
+app.delete(`${apiPrefix}/bills/:id`, deleteBillHandler);
 /*
 |--------------------------------------------------------------------------
 | Rooms
