@@ -1087,7 +1087,12 @@ app.post('/webhook', async (req, res) => {
                             paddingAll: "md",
                             contents: [
                                 { type: "text", text: "สถานะ: ⏳ ค้างชำระ", color: "#ef4444", weight: "bold", size: "md", align: "center" },
-                                { type: "text", text: "หากต้องการชำระเงิน ที่ละบิลให้กดเมนู ชำระเงินทั้งหมด", color: "#6b7280", size: "sm", align: "center", margin: "md", wrap: true }
+                                {type: "box", layout: "vertical", paddingAll: "sm",
+                                contents: [{
+                                    type: "button", style: "primary", color: "#3b82f6",
+                                    action: { type: "message", label: "เลือกชำระบิลนี้", text: `แจ้งชำระบิล #${bill.id}` }
+                                }]
+                            }
                             ]
                         }
                     }));
