@@ -279,17 +279,18 @@ function renderDashboardRooms(rooms) {
                </div>` 
             : '';
             // เพิ่มการตรวจสอบและสร้างแถบสถานะการจ่ายเงิน
-        let paymentTag = '';
-        if (isOccupied && r.payment_status === 'ค้างชำระ') {
-            paymentTag = `<div class="mt-2 bg-orange-50 text-orange-600 px-3 py-2 rounded-xl text-xs font-bold border border-orange-200 flex items-center justify-center gap-1.5 shadow-sm">
-                ⏳ ค้างชำระบิลล่าสุด
-            </div>`;
-        } else if (isOccupied && r.payment_status === 'ชำระเงินแล้ว') {
-            paymentTag = `<div class="mt-2 bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-xs font-bold border border-emerald-200 flex items-center justify-center gap-1.5 shadow-sm">
-                ✅ ชำระเงินแล้ว
-            </div>`;
-        }
-        
+            let paymentTag = '';
+            if (isOccupied && r.payment_status === 'ค้างชำระ') {
+                paymentTag = `
+                <button onclick="event.stopPropagation(); selectBillForPayment('${escapeHTML(r.number)}', '${escapeHTML(r.account_number || '')}')" class="mt-2 w-full bg-orange-50 text-orange-600 px-3 py-2 rounded-xl text-xs font-bold border border-orange-200 flex items-center justify-center gap-1.5 shadow-sm hover:bg-orange-500 hover:text-white transition-colors z-10 cursor-pointer">
+                    💳 เลือกชำระบิลนี้ (ค้างชำระ)
+                </button>`;
+            } else if (isOccupied && r.payment_status === 'ชำระเงินแล้ว') {
+                paymentTag = `<div class="mt-2 bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-xs font-bold border border-emerald-200 flex items-center justify-center gap-1.5 shadow-sm">
+                    ✅ ชำระเงินแล้ว
+                </div>`;
+            }
+                
         return `
             <!-- เพิ่ม onclick และ cursor-pointer เพื่อให้กดเปิด Modal รายละเอียดได้ -->
             <div onclick="showRoomDetailModal(${r.id})" class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-indigo-300 transition-all duration-300 group flex flex-col justify-between transform hover:-translate-y-1 cursor-pointer">
@@ -332,6 +333,32 @@ function renderDashboardRooms(rooms) {
             </div>
         `;
     }).join('');
+}
+
+// ฟังก์ชันเมื่อกด "เลือกชำระบิลนี้" จากการ์ดห้องพัก
+async function selectBillForPayment(roomNumber, accountNumber) {
+    // 1. สลับไปหน้าแนบ/ตรวจสอบสลิป
+    await switchTab('slip');
+
+    // 2. รอนำเข้าข้อมูลห้องพัก/เลขบัญชีใส่ฟอร์มตรวจสอบสลิป
+    setTimeout(() => {
+        const expAccInput = document.getElementById('expectedAccount');
+        const roomInput = document.getElementById('slipRoomNumber') || document.getElementById('roomNumber');
+
+        if (expAccInput && accountNumber) {
+            expAccInput.value = accountNumber;
+        }
+        if (roomInput && roomNumber) {
+            roomInput.value = roomNumber;
+        }
+
+        // 3. เลื่อนหน้าจอไปยังจุดอัปโหลดสลิป
+        const fileInput = document.getElementById('slipFile');
+        if (fileInput) {
+            fileInput.scrollIntoView({ behavior: 'smooth' });
+            fileInput.focus();
+        }
+    }, 300);
 }
 
 // 3. ฟังก์ชันกรองข้อมูลสถานะและค้นหา
@@ -389,8 +416,11 @@ async function savePaymentAccount() {
     }
 }
 // =====================================================
-// PAYMENT ACCOUNT MANAGEMENT
+// PAYMENT ACCOUNT MANAGEMENT 
 // =====================================================
+
+let currentAccounts = [];
+let editingAccountId = null; // เก็บ ID บัญชีที่กำลังแก้ไข
 
 // โหลดรายการบัญชีรับเงินมาแสดงในการ์ด
 async function loadAccounts() {
@@ -401,10 +431,9 @@ async function loadAccounts() {
         const res = await fetch('/api/payment-accounts');
         const data = await res.json();
         
-        // รองรับทั้งกรณี data เป็น Array โดยตรง หรือซ้อนอยู่ใน accounts / data
-        const accounts = Array.isArray(data) ? data : (data.accounts || data.data || []);
+        currentAccounts = Array.isArray(data) ? data : (data.accounts || data.data || []);
         
-        if (accounts.length === 0) {
+        if (currentAccounts.length === 0) {
             container.innerHTML = `
                 <div class="col-span-full text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                     <p class="text-gray-400 font-medium">ยังไม่มีข้อมูลบัญชีรับเงิน</p>
@@ -412,7 +441,7 @@ async function loadAccounts() {
             return;
         }
 
-        container.innerHTML = accounts.map(acc => {
+        container.innerHTML = currentAccounts.map(acc => {
             const qrHtml = acc.qr_image 
                 ? `<div class="mt-3 p-2 bg-gray-50 rounded-xl border border-gray-100 flex justify-center">
                     <img src="${acc.qr_image}" class="h-36 object-contain rounded-lg">
@@ -433,14 +462,120 @@ async function loadAccounts() {
                         </div>
                         ${qrHtml}
                     </div>
-                    <button onclick="deleteAccount(${acc.id})" class="mt-4 w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors">
-                        🗑️ ลบบัญชีนี้
-                    </button>
+                    <div class="mt-4 flex gap-2 w-full">
+                        <button onclick="editAccount(${acc.id})" class="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold rounded-xl transition-colors">
+                            ✏️ แก้ไข
+                        </button>
+                        <button onclick="deleteAccount(${acc.id})" class="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors">
+                            🗑 ลบ
+                        </button>
+                    </div>
                 </div>
             `;
         }).join('');
     } catch (e) {
         console.error('Error loading accounts:', e);
+    }
+}
+
+// ฟังก์ชันดึงข้อมูลบัญชีเดิมมาใส่ฟอร์มเพื่อแก้ไข
+function editAccount(id) {
+    const acc = currentAccounts.find(a => Number(a.id) === Number(id));
+    if (!acc) return alert('ไม่พบข้อมูลบัญชีที่ต้องการแก้ไข');
+
+    editingAccountId = acc.id;
+
+    // เติมข้อมูลลงฟอร์ม
+    if (document.getElementById('bankName')) document.getElementById('bankName').value = acc.bank_name || '';
+    if (document.getElementById('accNumber')) document.getElementById('accNumber').value = acc.account_number || '';
+    if (document.getElementById('accName')) document.getElementById('accName').value = acc.account_name || '';
+    if (document.getElementById('phoneNum')) document.getElementById('phoneNum').value = acc.phone || '';
+
+    // เปลี่ยนข้อความปุ่มบันทึก (ถ้ามี id="saveAccountBtn")
+    const saveBtn = document.getElementById('saveAccountBtn');
+    if (saveBtn) saveBtn.innerText = '💾 บันทึกการแก้ไข';
+
+    // เลื่อนหน้าจอไปยังฟอร์มแก้ไข
+    const formElement = document.getElementById('bankName')?.closest('form') || document.getElementById('bankName')?.closest('div');
+    if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+// ฟังก์ชันบันทึกข้อมูลบัญชี (รองรับทั้ง เพิ่มใหม่ POST และ แก้ไข PUT)
+async function savePaymentAccount() {
+    const qrFile = document.getElementById('qrImageInput')?.files[0];
+    const bank_name = document.getElementById('bankName')?.value.trim();
+    const account_number = document.getElementById('accNumber')?.value.trim();
+    const account_name = document.getElementById('accName')?.value.trim();
+    const phone = document.getElementById('phoneNum')?.value.trim();
+
+    if (!bank_name || !account_number || !account_name) {
+        return alert('กรุณากรอกชื่อธนาคาร เลขบัญชี และชื่อบัญชีให้ครบถ้วน');
+    }
+
+    let qr_image = null;
+    if (qrFile) {
+        qr_image = await fileToBase64(qrFile);
+    } else if (editingAccountId) {
+        // กรณีแก้ไขแต่ไม่ได้อัปโหลดรูปใหม่ ให้ใช้รูปเดิม
+        const existingAcc = currentAccounts.find(a => Number(a.id) === Number(editingAccountId));
+        qr_image = existingAcc ? existingAcc.qr_image : null;
+    }
+
+    const payload = { bank_name, account_number, account_name, phone, qr_image };
+
+    try {
+        const url = editingAccountId ? `/api/payment-accounts/${editingAccountId}` : '/api/payment-accounts';
+        const method = editingAccountId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            alert(editingAccountId ? '✅ แก้ไขข้อมูลสำเร็จ' : '✅ บันทึกบัญชีใหม่สำเร็จ');
+            resetAccountForm();
+            await loadAccounts();
+        } else {
+            const errData = await res.json();
+            alert('❌ เกิดข้อผิดพลาด: ' + (errData.message || 'ไม่สามารถบันทึกได้'));
+        }
+    } catch (e) {
+        console.error('Save Account Error:', e);
+        alert('❌ เกิดข้อผิดพลาดในการเชื่อมต่อระบบ');
+    }
+}
+
+// ล้างค่าฟอร์มบัญชีรับเงิน
+function resetAccountForm() {
+    editingAccountId = null;
+    if (document.getElementById('bankName')) document.getElementById('bankName').value = '';
+    if (document.getElementById('accNumber')) document.getElementById('accNumber').value = '';
+    if (document.getElementById('accName')) document.getElementById('accName').value = '';
+    if (document.getElementById('phoneNum')) document.getElementById('phoneNum').value = '';
+    if (document.getElementById('qrImageInput')) document.getElementById('qrImageInput').value = '';
+
+    const saveBtn = document.getElementById('saveAccountBtn');
+    if (saveBtn) saveBtn.innerText = '➕ เพิ่มบัญชีรับเงิน';
+}
+
+// ฟังก์ชันลบบัญชีรับเงิน
+async function deleteAccount(id) {
+    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบบัญชีรับเงินนี้?')) return;
+    try {
+        const res = await fetch(`/api/payment-accounts/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            alert('✅ ลบบัญชีสำเร็จ');
+            await loadAccounts();
+        } else {
+            alert('❌ ไม่สามารถลบบัญชีได้');
+        }
+    } catch (e) {
+        console.error('Delete Account Error:', e);
+        alert('❌ เกิดข้อผิดพลาดในการลบบัญชี');
     }
 }
 
@@ -576,6 +711,7 @@ async function fetchExportedBills() {
                     <p class="text-sm font-bold text-gray-800 truncate mb-4" title="${escapeHTML(file.name)}">
                         ${escapeHTML(file.name)}
                     </p>
+                    
                     
                     <!-- กลุ่มปุ่มกด -->
                     <div class="flex gap-2 mt-auto">
