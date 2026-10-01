@@ -706,51 +706,19 @@ async function fetchExportedBills() {
 
             // 📍 แก้ไขจุดที่ 2: ปรับระบบเปรียบเทียบวันเวลาให้เสถียรและแม่นยำ (คำนวณแบบ Local Midnight)
             if (file.due_date && paymentStatus !== 'ชำระเงินแล้ว') {
-               // 1. ตรวจสอบการเกินกำหนดชำระและคำนวณค่าปรับ
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
 
-                let isOverdue = false;
-                let overdueDays = 0;
-                let totalFine = 0;
+                const due = new Date(file.due_date); // เปลี่ยนจาก dueDate เป็น file.due_date
+                due.setHours(0, 0, 0, 0);
 
-                if (dueDate) {
-                    const due = new Date(dueDate);
-                    due.setHours(0, 0, 0, 0);
-
-                    if (today > due) {
-                        isOverdue = true;
-                        const diffTime = today - due;
-                        overdueDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // จำนวนวันที่เกินกำหนด
-                        totalFine = overdueDays * (Number(finePerDay) || 0); // คำนวณค่าปรับรวม
-                    }
-                }
-
-                // 2. จัดลำดับรายการบิล (Bill Items Sequence)
-                const billItems = [
-                    { name: 'ค่าเช่าห้อง', amount: Number(roomPrice) },
-                    { name: `ค่าไฟฟ้า (${elecUnits} หน่วย)`, amount: Number(elecTotal) },
-                    { name: `ค่าประปา (${waterUnits} หน่วย)`, amount: Number(waterTotal) }
-                ];
-
-                // 3. หากเกินกำหนดชำระ และมีค่าปรับ ให้แทรกบรรทัดค่าปรับต่อจากค่าประปาทันที
-                if (isOverdue && totalFine > 0) {
-                    billItems.push({
-                        name: `ค่าปรับเกินกำหนด (${overdueDays} วัน)`,
-                        amount: totalFine
-                    });
-                }
-
-                // 4. ตามด้วยค่าใช้จ่ายเพิ่มเติมอื่น ๆ (ถ้ามี)
-                if (optFeeCheck && Array.isArray(optFees)) {
-                    optFees.forEach(fee => {
-                        if (fee.name && fee.amount > 0) {
-                            billItems.push(fee);
-                        }
-                    });
+                // หากบิลเกินกำหนด ให้เปลี่ยนสถานะสำหรับการแสดงป้าย (Badge)
+                if (today > due) {
+                    paymentStatus = 'เกินกำหนด'; 
                 }
             }
 
+            
             // สร้าง ป้ายสถานะ (Badge)
             if (paymentStatus === 'ชำระเงินแล้ว') {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-emerald-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-emerald-400/50 z-10">✅ ชำระเงินแล้ว</span>`;
@@ -760,7 +728,7 @@ async function fetchExportedBills() {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-orange-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-orange-400/50 z-10 animate-pulse">⏳ ค้างชำระ</span>`;
             }
 
-            // 📍 แก้ไขจุดที่ 3: กำหนด Path สำรองกรณี file.url เป็น undefined ป้องกันรูปหาย
+            // 📍 แก้ไขจุดที่ 3: กำหนด Path สำรองกรณี file.url เป็น undefined
             const imgUrl = file.url || `/exports/${file.name}`;
 
             return `
@@ -2122,7 +2090,7 @@ async function generateBills() {
     if (today > due) {
         isOverdue = true;
         overdueDays = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
-        fineAmount = overdueDays * finePerDay;
+        fineAmount = overdueDays * (Number(finePerDay) || 0); // แปลงเป็นตัวเลขและดักค่าว่าง
     }
 
     try {
