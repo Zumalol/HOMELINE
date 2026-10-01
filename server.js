@@ -94,6 +94,9 @@ pool.connect()
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            -- เพิ่มคอลัมน์เก็บข้อมูลบิลประจำบิลแต่ละใบ
+            ALTER TABLE bills ADD COLUMN IF NOT EXISTS bill_data TEXT;
+
             -- เพิ่มคอลัมน์สำหรับเก็บข้อมูลการเตรียมย้ายออกในตาราง rooms
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS is_moving_out BOOLEAN DEFAULT FALSE;
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS move_out_day VARCHAR(10);
@@ -1206,13 +1209,23 @@ app.post('/webhook', async (req, res) => {
                     const billIdMatch = billName.match(/#(\d+)/);
                     if (billIdMatch) {
                         const billId = billIdMatch[1];
-                        const billRes = await pool.query('SELECT room_number FROM bills WHERE id = $1', [billId]);
+                        // 🟢 ดึง bill_data จากตาราง bills ของบิลใบนั้นโดยตรง
+                        const billRes = await pool.query('SELECT room_number, bill_data FROM bills WHERE id = $1', [billId]);
                         
                         if (billRes.rows.length > 0) {
-                            const roomRes = await pool.query('SELECT last_bill_data FROM rooms WHERE number = $1', [billRes.rows[0].room_number]);
-                            if (roomRes.rows.length > 0 && roomRes.rows[0].last_bill_data) {
-                                const billData = JSON.parse(roomRes.rows[0].last_bill_data);
-                                // 🟢 อ่านค่ารองรับชื่อ Key ทุกรูปแบบ
+                            let billData = null;
+
+                            if (billRes.rows[0].bill_data) {
+                                billData = JSON.parse(billRes.rows[0].bill_data);
+                            } else {
+                                // Fallback: สำหรับบิลเก่าที่ยังไม่มี bill_data ให้ดึงจากตาราง rooms
+                                const roomRes = await pool.query('SELECT last_bill_data FROM rooms WHERE number = $1', [billRes.rows[0].room_number]);
+                                if (roomRes.rows.length > 0 && roomRes.rows[0].last_bill_data) {
+                                    billData = JSON.parse(roomRes.rows[0].last_bill_data);
+                                }
+                            }
+
+                            if (billData) {
                                 bankName = billData.payBank || billData.bank_name || billData.bankName || '-';
                                 accNo = billData.payAccountNo || billData.account_number || billData.accountNumber || '-';
                                 accName = billData.payName || billData.account_name || billData.accountName || '-';
@@ -2030,9 +2043,9 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
 
         // บันทึก URL บิลลงในตาราง bills
         await pool.query(`
-            INSERT INTO bills (room_number, bill_url, public_id, status)
-            VALUES ($1, $2, $3, 'ค้างชำระ')
-        `, [room.number, fileUrl, uploadResult.public_id]);
+            INSERT INTO bills (room_number, bill_url, public_id, status, bill_data)
+            VALUES ($1, $2, $3, 'ค้างชำระ', $4)
+        `, [room.number, fileUrl, uploadResult.public_id, JSON.stringify(req.body)]);
 
         // อัปเดตสถานะในตาราง rooms
         await pool.query(`
