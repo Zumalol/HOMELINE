@@ -1597,37 +1597,80 @@ const downloadBillHandler = async (req, res) => {
 app.get(`${apiPrefix}/exported-bills/:id/download`, downloadBillHandler);
 app.get(`${apiPrefix}/bills/:id/download`, downloadBillHandler);
 
-// 3. API สำหรับลบบิล (รองรับการลบทั้งจาก Cloudinary และ PostgreSQL)
+// 3. API สำหรับลบบิล (รองรับการลบทั้งจาก Cloudinary, PostgreSQL และไฟล์ Local)
 async function deleteBillHandler(req, res) {
     try {
-        const identifier = decodeURIComponent(req.params.id || req.params.filename || '');
+        const rawParam = req.params.id || req.params[0] || req.params.filename || '';
+        const identifier = decodeURIComponent(rawParam).trim();
 
-        // ตรวจสอบว่าเป็นตัวเลข (ID) หรือ ข้อความชื่อไฟล์/public_id
-        const isNumeric = /^\d+$/.test(identifier);
-
-        let query, params;
-        if (isNumeric) {
-            // ลบจาก ID บิล
-            query = 'DELETE FROM bills WHERE id = $1 RETURNING *';
-            params = [parseInt(identifier, 10)];
-        } else {
-            // ลบจาก public_id หรือ เลขห้องพัก
-            query = 'DELETE FROM bills WHERE public_id = $1 OR room_number = $1 RETURNING *';
-            params = [identifier];
+        if (!identifier) {
+            return res.status(400).json({
+                success: false,
+                message: 'กรุณาระบุบิลที่ต้องการลบ'
+            });
         }
 
-        const result = await pool.query(query, params);
+        // 1. ตัดนามสกุลไฟล์ออก (.png, .jpg, .jpeg, .webp)
+        let cleaned = identifier.replace(/\.(png|jpg|jpeg|webp)$/i, '');
 
-        if (result.rows.length === 0) {
+        // 2. ดึงเฉพาะเลขห้อง หรือ ID หากมี Prefix เช่น Bill_Room_101_12 หรือ Bill_Room_101
+        let extractedRoom = null;
+        let extractedId = null;
+
+        const roomAndIdMatch = cleaned.match(/^Bill_Room_([^_]+)_(\d+)$/i);
+        const roomOnlyMatch = cleaned.match(/^Bill_Room_([^_]+)$/i);
+
+        if (roomAndIdMatch) {
+            extractedRoom = roomAndIdMatch[1];
+            extractedId = parseInt(roomAndIdMatch[2], 10);
+        } else if (roomOnlyMatch) {
+            extractedRoom = roomOnlyMatch[1];
+        }
+
+        // 3. ค้นหาบิลที่จะลบแบบยืดหยุ่น (รองรับ id, room_number, public_id, bill_url)
+        let findQuery = `
+            SELECT * FROM bills 
+            WHERE id::text = $1 
+               OR room_number = $1 
+               OR public_id = $1 
+               OR bill_url = $1
+               OR public_id LIKE $2
+        `;
+        let findParams = [cleaned, `%${cleaned}%`];
+
+        if (extractedId) {
+            findQuery += ` OR id = ${extractedId}`;
+        }
+        if (extractedRoom) {
+            findQuery += ` OR room_number = '${extractedRoom}'`;
+        }
+
+        findQuery += ` ORDER BY id DESC LIMIT 1`;
+
+        const findResult = await pool.query(findQuery, findParams);
+
+        if (findResult.rows.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'ไม่พบบิลที่ต้องการลบในระบบ'
             });
         }
 
-        const deletedBill = result.rows[0];
+        const billToDelete = findResult.rows[0];
 
-        // ลบรูปภาพบน Cloudinary (ถ้ามี public_id)
+        // 4. ลบข้อมูลบิลจากฐานข้อมูล PostgreSQL
+        const deleteResult = await pool.query('DELETE FROM bills WHERE id = $1 RETURNING *', [billToDelete.id]);
+
+        if (deleteResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'ไม่พบบิลที่ต้องการลบในระบบ'
+            });
+        }
+
+        const deletedBill = deleteResult.rows[0];
+
+        // 5. ลบรูปภาพบน Cloudinary (ถ้ามี public_id)
         if (deletedBill.public_id) {
             try {
                 await cloudinary.uploader.destroy(deletedBill.public_id);
@@ -1636,10 +1679,24 @@ async function deleteBillHandler(req, res) {
             }
         }
 
-        // ลบไฟล์จริงออกจากโฟลเดอร์ /public/exports (กรณีมีไฟล์ local)
-        const filePath = path.join(__dirname, 'public', 'exports', identifier);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+        // 6. ลบไฟล์จริงออกจากโฟลเดอร์ /public/exports (กรณีมีไฟล์ local)
+        const possibleFilenames = [
+            identifier,
+            cleaned,
+            `${cleaned}.png`,
+            `Bill_Room_${deletedBill.room_number}.png`,
+            `Bill_Room_${deletedBill.room_number}_${deletedBill.id}.png`
+        ];
+
+        for (const fname of possibleFilenames) {
+            const filePath = path.join(__dirname, 'public', 'exports', fname);
+            if (fs.existsSync(filePath)) {
+                try {
+                    fs.unlinkSync(filePath);
+                } catch (e) {
+                    console.error('File Unlink Error:', e);
+                }
+            }
         }
 
         return res.json({ 
@@ -1656,7 +1713,10 @@ async function deleteBillHandler(req, res) {
     }
 }
 
+// กำหนด Route รองรับทั้ง Parameter ID ปกติ และ Wildcard สำหรับ path ที่มีเครื่องหมาย /
+app.delete(`${apiPrefix}/exported-bills/*`, deleteBillHandler);
 app.delete(`${apiPrefix}/exported-bills/:id`, deleteBillHandler);
+app.delete(`${apiPrefix}/bills/*`, deleteBillHandler);
 app.delete(`${apiPrefix}/bills/:id`, deleteBillHandler);
 /*
 |--------------------------------------------------------------------------
