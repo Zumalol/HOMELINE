@@ -1600,26 +1600,43 @@ app.get(`${apiPrefix}/bills/:id/download`, downloadBillHandler);
 // 3. API สำหรับลบบิล (รองรับการลบทั้งจาก Cloudinary และ PostgreSQL)
 async function deleteBillHandler(req, res) {
     try {
-        const { filename } = req.params;
-        const identifier = decodeURIComponent(filename);
+        const identifier = decodeURIComponent(req.params.id || req.params.filename || '');
 
-        // ตรวจสอบว่าเป็นตัวเลข (ID) หรือ ข้อความชื่อไฟล์ (Filename String)
+        // ตรวจสอบว่าเป็นตัวเลข (ID) หรือ ข้อความชื่อไฟล์/public_id
         const isNumeric = /^\d+$/.test(identifier);
 
         let query, params;
         if (isNumeric) {
-            // ถ้าส่งมาเป็น ID ตัวเลข
-            query = 'DELETE FROM exported_bills WHERE id = $1 RETURNING *';
+            // ลบจาก ID บิล
+            query = 'DELETE FROM bills WHERE id = $1 RETURNING *';
             params = [parseInt(identifier, 10)];
         } else {
-            // ถ้าส่งมาเป็นชื่อไฟล์ (String) ให้เทียบกับคอลัมน์ filename หรือ name (ประเภท TEXT/VARCHAR)
-            query = 'DELETE FROM exported_bills WHERE filename = $1 OR name = $1 RETURNING *';
+            // ลบจาก public_id หรือ เลขห้องพัก
+            query = 'DELETE FROM bills WHERE public_id = $1 OR room_number = $1 RETURNING *';
             params = [identifier];
         }
 
         const result = await pool.query(query, params);
 
-        // ลบไฟล์จริงออกจาก Folder /exports (ถ้ามี)
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'ไม่พบบิลที่ต้องการลบในระบบ'
+            });
+        }
+
+        const deletedBill = result.rows[0];
+
+        // ลบรูปภาพบน Cloudinary (ถ้ามี public_id)
+        if (deletedBill.public_id) {
+            try {
+                await cloudinary.uploader.destroy(deletedBill.public_id);
+            } catch (cloudErr) {
+                console.error('Cloudinary Delete Error:', cloudErr);
+            }
+        }
+
+        // ลบไฟล์จริงออกจากโฟลเดอร์ /public/exports (กรณีมีไฟล์ local)
         const filePath = path.join(__dirname, 'public', 'exports', identifier);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
