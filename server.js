@@ -1899,7 +1899,19 @@ function uploadBufferToCloudinary(buffer, folderName = 'dorm_bills') {
         uploadStream.end(buffer);
     });
 }
-
+// ฟังก์ชันช่วยแปลงวันที่ให้อยู่ในโซนเวลาท้องถิ่น ป้องกันปัญหาเรื่อง Timezone
+function parseLocalDate(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) return dateStr;
+    if (typeof dateStr === 'string') {
+        const match = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (match) {
+            return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+        }
+    }
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+}
 // ฟังก์ชันสร้าง Workbook ตามแบบฟอร์มในภาพ
 // ฟังก์ชันสร้างรูปภาพบิลแทน Excel
 async function createBillingImage(room, inputs, filePath) {
@@ -1949,15 +1961,16 @@ async function createBillingImage(room, inputs, filePath) {
     }
 
     // คำนวณค่าปรับล่าช้า (หากสร้างบิลหลังวันครบกำหนด)
-    const rawDueDate = inputs.billDueDate || inputs.bill_due_date || inputs.dueDate;
-    let finePerDay = Number(inputs.finePerDay || inputs.fine_per_day) || 0;
+    // คำนวณค่าปรับล่าช้า (หากสร้างบิลหลังวันครบกำหนด หรือดูบิลย้อนหลัง)
+    const rawDueDate = inputs.billDueDate || inputs.bill_due_date || inputs.dueDate || room.bill_due_date;
+    let finePerDay = Number(inputs.finePerDay || inputs.fine_per_day || room.fine_per_day) || 0;
     let fineAmount = 0;
     let overdueDays = 0;
 
     let dueDateText = 'ไม่ระบุ';
     if (rawDueDate) {
-        const d = new Date(rawDueDate);
-        if (!isNaN(d.getTime())) {
+        const d = parseLocalDate(rawDueDate);
+        if (d) {
             dueDateText = d.toLocaleDateString('th-TH', { 
                 day: 'numeric', 
                 month: 'long', 
@@ -1969,26 +1982,30 @@ async function createBillingImage(room, inputs, filePath) {
         }
     }
 
-    if (inputs.billDueDate && finePerDay > 0) {
-        const dueDate = new Date(inputs.billDueDate);
-        const today = new Date();
-        dueDate.setHours(0, 0, 0, 0);
-        today.setHours(0, 0, 0, 0);
+    if (rawDueDate && finePerDay > 0) {
+        const dueDate = parseLocalDate(rawDueDate);
+        if (dueDate) {
+            const today = new Date();
+            dueDate.setHours(0, 0, 0, 0);
+            today.setHours(0, 0, 0, 0);
 
-        if (today > dueDate) {
-            overdueDays = Math.ceil((today - dueDate) / (1000 * 60 * 60 * 24));
-            fineAmount = overdueDays * finePerDay;
+            if (today > dueDate) {
+                overdueDays = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+                if (overdueDays > 0) {
+                    fineAmount = overdueDays * finePerDay;
 
-            optFeeRowHTML += `
-                <tr style="color: #dc2626; font-weight: bold;">
-                    <td>${rowNumber++}</td>
-                    <td style="text-align: left;">ค่าปรับชำระเกินกำหนด (${overdueDays} วัน x ${finePerDay} บาท)</td>
-                    <td>-</td>
-                    <td>-</td>
-                    <td>-</td>
-                    <td class="text-right">${fineAmount.toFixed(2)}</td>
-                </tr>
-            `;
+                    optFeeRowHTML += `
+                        <tr style="color: #dc2626; font-weight: bold;">
+                            <td>${rowNumber++}</td>
+                            <td style="text-align: left;">ค่าปรับชำระเกินกำหนด (${overdueDays} วัน x ${finePerDay} บาท)</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="text-right">${fineAmount.toFixed(2)}</td>
+                        </tr>
+                    `;
+                }
+            }
         }
     }
 
@@ -2124,6 +2141,9 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
     const finePerDay = Number(req.body.finePerDay || req.body.fine_per_day) || 0;
     const { dormName, roomNumber, lineUserId } = req.body;
 
+    // Normalize คีย์ลง req.body
+    req.body.billDueDate = billDueDate;
+    req.body.finePerDay = finePerDay;
     try {
         const result = await pool.query(`
             SELECT r.*, d.name as dormitory_name 
