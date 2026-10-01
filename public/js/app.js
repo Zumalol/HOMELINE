@@ -706,19 +706,48 @@ async function fetchExportedBills() {
 
             // 📍 แก้ไขจุดที่ 2: ปรับระบบเปรียบเทียบวันเวลาให้เสถียรและแม่นยำ (คำนวณแบบ Local Midnight)
             if (file.due_date && paymentStatus !== 'ชำระเงินแล้ว') {
+               // 1. ตรวจสอบการเกินกำหนดชำระและคำนวณค่าปรับ
                 const today = new Date();
-                today.setHours(0, 0, 0, 0); // ตั้งเป็นเวลา 00:00:00 ของวันนี้
+                today.setHours(0, 0, 0, 0);
 
-                // แปลงสตริง dueDate (เช่น '2026-09-30') เป็นวัตถุ Date ฝั่ง Local
-                const dateParts = file.due_date.split('T')[0].split('-');
-                if (dateParts.length === 3) {
-                    const dueDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
-                    dueDate.setHours(0, 0, 0, 0);
+                let isOverdue = false;
+                let overdueDays = 0;
+                let totalFine = 0;
 
-                    // ตรวจจับว่าวันนี้เกินวันกำหนดชำระหรือยัง
-                    if (today > dueDate) {
-                        paymentStatus = 'เกินกำหนด';
+                if (dueDate) {
+                    const due = new Date(dueDate);
+                    due.setHours(0, 0, 0, 0);
+
+                    if (today > due) {
+                        isOverdue = true;
+                        const diffTime = today - due;
+                        overdueDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // จำนวนวันที่เกินกำหนด
+                        totalFine = overdueDays * (Number(finePerDay) || 0); // คำนวณค่าปรับรวม
                     }
+                }
+
+                // 2. จัดลำดับรายการบิล (Bill Items Sequence)
+                const billItems = [
+                    { name: 'ค่าเช่าห้อง', amount: Number(roomPrice) },
+                    { name: `ค่าไฟฟ้า (${elecUnits} หน่วย)`, amount: Number(elecTotal) },
+                    { name: `ค่าประปา (${waterUnits} หน่วย)`, amount: Number(waterTotal) }
+                ];
+
+                // 3. หากเกินกำหนดชำระ และมีค่าปรับ ให้แทรกบรรทัดค่าปรับต่อจากค่าประปาทันที
+                if (isOverdue && totalFine > 0) {
+                    billItems.push({
+                        name: `ค่าปรับเกินกำหนด (${overdueDays} วัน)`,
+                        amount: totalFine
+                    });
+                }
+
+                // 4. ตามด้วยค่าใช้จ่ายเพิ่มเติมอื่น ๆ (ถ้ามี)
+                if (optFeeCheck && Array.isArray(optFees)) {
+                    optFees.forEach(fee => {
+                        if (fee.name && fee.amount > 0) {
+                            billItems.push(fee);
+                        }
+                    });
                 }
             }
 
@@ -2081,6 +2110,21 @@ async function generateBills() {
         return;
     }
 
+    // คำนวณวันเกินกำหนด
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    let isOverdue = false;
+    let overdueDays = 0;
+    let fineAmount = 0;
+
+    if (today > due) {
+        isOverdue = true;
+        overdueDays = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
+        fineAmount = overdueDays * finePerDay;
+    }
+
     try {
         const res = await fetch('/api/generate-bills', {
             method: 'POST',
@@ -2091,8 +2135,11 @@ async function generateBills() {
                 waterPrev, waterCurr, waterRate,
                 payMethod, payBank, payAccountNo, payName, payPhone, payQrBase64,
                 optFeeCheck, optFees,
-                dueDate: dueDate,
-                finePerDay: Number(finePerDay) || 0
+                dueDate,
+                finePerDay,
+                isOverdue,
+                overdueDays,
+                fineAmount
             })
         });
 
@@ -2663,18 +2710,23 @@ function closeTenantModal() {
 }
 
 // บันทึก/แก้ไขข้อมูลผู้เช่า (POST / PUT)
+// บันทึก/แก้ไขข้อมูลผู้เช่า (POST / PUT)
 async function saveTenant(e) {
     e.preventDefault();
 
-    const id = document.getElementById('tenant-id').value;
-    const payload = {
-        name: document.getElementById('ocr-name').value.trim(),
-        id_card: document.getElementById('ocr-id').value.trim(),
-        phone: document.getElementById('ocr-phone').value.trim(),
-        parent_phone: document.getElementById('ocr-parent-phone').value.trim(),
-        line_id: document.getElementById('ocr-line-id').value.trim(),
-        address: document.getElementById('ocr-address').value.trim()
-    };
+    const id = document.getElementById('tenant-id')?.value;
+    const name = document.getElementById('ocr-name')?.value.trim();
+    const id_card = document.getElementById('ocr-id')?.value.trim();
+    const phone = document.getElementById('ocr-phone')?.value.trim();
+    const parent_phone = document.getElementById('ocr-parent-phone')?.value.trim();
+    const line_id = document.getElementById('ocr-line-id')?.value.trim();
+    const address = document.getElementById('ocr-address')?.value.trim();
+
+    if (!name) {
+        return alert('กรุณากรอกชื่อ-นามสกุลผู้เช่า');
+    }
+
+    const payload = { name, id_card, phone, parent_phone, line_id, address };
 
     try {
         const url = id ? `/api/tenants/${id}` : '/api/tenants';
@@ -2686,14 +2738,14 @@ async function saveTenant(e) {
             body: JSON.stringify(payload)
         });
 
-        const result = await res.json();
-        if (!res.ok || !result.success) throw new Error(result.message);
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'บันทึกข้อมูลผู้เช่าไม่สำเร็จ');
 
-        alert('✅ ' + result.message);
+        alert('✅ ' + data.message);
         closeTenantModal();
-        fetchTenants();
-
+        await fetchTenants();
     } catch (error) {
+        console.error('Save Tenant Error:', error);
         alert('❌ ' + error.message);
     }
 }
