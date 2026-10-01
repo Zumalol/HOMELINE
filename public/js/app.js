@@ -786,7 +786,10 @@ async function deleteExportedBill(filename) {
     }
 
     try {
-        const res = await fetch(`/api/exported-bills/${filename}`, {
+        // เข้ารหัสชื่อไฟล์เพื่อความปลอดภัยเมื่อส่งผ่าน URL Parameter
+        const safeFilename = encodeURIComponent(filename);
+        
+        const res = await fetch(`/api/exported-bills/${safeFilename}`, {
             method: 'DELETE'
         });
         const data = await res.json();
@@ -797,7 +800,7 @@ async function deleteExportedBill(filename) {
 
         alert('✅ ' + data.message);
         
-        // โหลดรายการบิลใหม่เพื่ออัปเดตหน้าจอทันที
+        // โหลดรายการบิลใหม่เพื่ออัปเดตหน้าจอ
         await fetchExportedBills();
         
     } catch (error) {
