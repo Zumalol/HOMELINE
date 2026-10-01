@@ -605,28 +605,70 @@ async function loadPaymentOptionsForBilling() {
         console.error('Error loading payment options:', error);
     }
 }
+// ฟังก์ชันล้างค่าฟอร์มบัญชีรับเงินในการออกบิล
+function resetBillingPaymentForm() {
+    const select = document.getElementById('paymentAccountSelect');
+    if (select) select.value = '';
 
-// เมื่อเลือกบัญชีจาก Dropdown ให้เติมข้อมูลลงฟอร์มอัตโนมัติ
-function onSelectSavedPaymentAccount(selectEl) {
-    if (!selectEl.value) return;
-    
-    const acc = JSON.parse(selectEl.value);
-    
-    document.getElementById('payBank').value = acc.bank_name || '';
-    document.getElementById('payAccountNo').value = acc.account_number || '';
-    document.getElementById('payName').value = acc.account_name || '';
-    document.getElementById('payPhone').value = acc.phone || '';
-    
-    // หากมีรูป QR Code ให้เลือกโหมด QR Code อัตโนมัติ
-    if (acc.qr_image) {
-        document.getElementById('payMethod').value = 'qr';
-        document.getElementById('payQrBase64').value = acc.qr_image;
-        togglePayMethod();
-    } else {
-        document.getElementById('payMethod').value = 'account';
+    if (document.getElementById('payBank')) document.getElementById('payBank').value = '';
+    if (document.getElementById('payAccountNo')) document.getElementById('payAccountNo').value = '';
+    if (document.getElementById('payName')) document.getElementById('payName').value = '';
+    if (document.getElementById('payPhone')) document.getElementById('payPhone').value = '';
+    if (document.getElementById('payQrBase64')) document.getElementById('payQrBase64').value = '';
+    if (document.getElementById('payQrImage')) document.getElementById('payQrImage').value = '';
+
+    const payMethod = document.getElementById('payMethod');
+    if (payMethod) {
+        payMethod.value = 'account';
         togglePayMethod();
     }
 }
+
+// ฟังก์ชันเลือกบัญชีให้อัตโนมัติหากห้องพักมีเลขบัญชีผูกไว้
+function autoSelectPaymentAccountByNumber(accNumber) {
+    const select = document.getElementById('paymentAccountSelect');
+    if (!select || !accNumber) return;
+
+    for (let i = 0; i < select.options.length; i++) {
+        const opt = select.options[i];
+        if (!opt.value) continue;
+        try {
+            const acc = JSON.parse(opt.value);
+            if (acc.account_number === accNumber) {
+                select.selectedIndex = i;
+                onSelectSavedPaymentAccount(select);
+                break;
+            }
+        } catch (e) {}
+    }
+}
+
+// เมื่อเลือกบัญชีจาก Dropdown ให้เติมข้อมูลลงฟอร์มอัตโนมัติ
+function onSelectSavedPaymentAccount(selectEl) {
+    if (!selectEl || !selectEl.value) {
+        resetBillingPaymentForm();
+        return;
+    }
+    
+    const acc = JSON.parse(selectEl.value);
+    
+    if (document.getElementById('payBank')) document.getElementById('payBank').value = acc.bank_name || '';
+    if (document.getElementById('payAccountNo')) document.getElementById('payAccountNo').value = acc.account_number || '';
+    if (document.getElementById('payName')) document.getElementById('payName').value = acc.account_name || '';
+    if (document.getElementById('payPhone')) document.getElementById('payPhone').value = acc.phone || '';
+    
+    // หากมีรูป QR Code ให้เลือกโหมด QR Code อัตโนมัติ
+    if (acc.qr_image) {
+        if (document.getElementById('payMethod')) document.getElementById('payMethod').value = 'qr';
+        if (document.getElementById('payQrBase64')) document.getElementById('payQrBase64').value = acc.qr_image;
+        togglePayMethod();
+    } else {
+        if (document.getElementById('payMethod')) document.getElementById('payMethod').value = 'account';
+        if (document.getElementById('payQrBase64')) document.getElementById('payQrBase64').value = '';
+        togglePayMethod();
+    }
+}
+
 // =====================================================
 // EXPORTED BILLS SYSTEM (แก้ไขเรื่องวันหมดอายุและรูปภาพหาย)
 // =====================================================
@@ -1856,9 +1898,10 @@ async function fetchRoomsForBilling() {
 
     roomSelect.innerHTML = '<option value="">-- กำลังโหลดห้องพัก --</option>';
     
-    // รีเซ็ต LINE ID ทุกครั้งที่เปลี่ยนกลุ่มหอพัก
+    // รีเซ็ต LINE ID และข้อมูลชำระเงินทุกครั้งที่เปลี่ยนกลุ่มหอพัก
     const lineSelect = document.getElementById('billLineUser');
     if (lineSelect) lineSelect.value = '';
+    resetBillingPaymentForm();
 
     if (!selectedDorm) {
         roomSelect.innerHTML = '<option value="">-- เลือกห้องพัก --</option>';
@@ -1869,7 +1912,7 @@ async function fetchRoomsForBilling() {
         const res = await fetch('/api/rooms');
         const rooms = await res.json();
         
-        // กรองเฉพาะห้องที่มีผู้เช่าและอยู่ในหอพักที่เลือก เก็บไว้ใช้งานต่อ
+        // กรองเฉพาะห้องที่มีผู้เช่าและอยู่ในหอพักที่เลือก
         currentBillingRooms = rooms.filter(r => r.dormitory_name === selectedDorm && r.status === 'Occupied');
 
         if (currentBillingRooms.length === 0) {
@@ -1880,8 +1923,8 @@ async function fetchRoomsForBilling() {
         roomSelect.innerHTML = '<option value="">-- เลือกห้องพัก --</option>' + 
             currentBillingRooms.map(r => `<option value="${escapeHTML(r.number)}">ห้อง ${escapeHTML(r.number)} (${escapeHTML(r.tenant || '-')})</option>`).join('');
             
-        // ผูก Event Listener เมื่อผู้ใช้กดเลือกห้องจาก Dropdown
-        roomSelect.addEventListener('change', function() {
+        // เปลี่ยนใช้ roomSelect.onchange แทน addEventListener เพื่อป้องกัน Event ซ้ำซ้อน
+        roomSelect.onchange = function() {
             const selectedRoomNumber = this.value;
             const roomData = currentBillingRooms.find(r => r.number === selectedRoomNumber);
             
@@ -1890,13 +1933,22 @@ async function fetchRoomsForBilling() {
             } else if (lineSelect) {
                 lineSelect.value = ""; // เว้นว่างหากผู้เช่าคนนั้นไม่มี LINE ID
             }
-        });
+
+            // ล้างค่าฟอร์มการชำระเงินเดิมออก
+            resetBillingPaymentForm();
+
+            // หากห้องนี้มีเลขบัญชีผูกไว้อยู่แล้ว ให้เลือกให้อัตโนมัติ
+            if (roomData && roomData.account_number) {
+                autoSelectPaymentAccountByNumber(roomData.account_number);
+            }
+        };
 
     } catch (e) {
         console.error('Error fetching rooms for billing:', e);
         roomSelect.innerHTML = '<option value="">-- เกิดข้อผิดพลาดในการโหลดห้อง --</option>';
     }
 }
+
 // 1. เพิ่มฟังก์ชันสลับความสว่าง/ปิดการใช้งาน 
 function toggleOptFee() {
     const isChecked = document.getElementById('optFeeCheck').checked;
@@ -2025,15 +2077,14 @@ async function generateBills() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-            dormName, roomNumber, lineUserId, billMonth, 
-            elecPrev, elecCurr, elecRate, 
-            waterPrev, waterCurr, waterRate,
-            payMethod, payBank, payAccountNo, payName, payPhone, payQrBase64,
-            optFeeCheck, optFees,
-            dueDate: dueDate,
-            finePerDay: Number(finePerDay) || 0
-    })
-
+                dormName, roomNumber, lineUserId, billMonth, 
+                elecPrev, elecCurr, elecRate, 
+                waterPrev, waterCurr, waterRate,
+                payMethod, payBank, payAccountNo, payName, payPhone, payQrBase64,
+                optFeeCheck, optFees,
+                dueDate: dueDate,
+                finePerDay: Number(finePerDay) || 0
+            })
         });
 
         const data = await res.json();
@@ -2041,6 +2092,9 @@ async function generateBills() {
         if (!res.ok || !data.success) {
             throw new Error(data.message || 'ไม่สามารถออกบิลได้');
         }
+
+        // เคลียร์ค่าผู้รับเงินเมื่อสร้างบิลสำเร็จ
+        resetBillingPaymentForm();
 
         const result = document.getElementById('billing-result');
         if (result) {
