@@ -11,6 +11,9 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const cloudinary = require('cloudinary').v2;
+const { neon } = require('@neondatabase/serverless');
+
+const db = neon(process.env.DATABASE_URL);
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
