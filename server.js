@@ -3094,41 +3094,27 @@ app.get(`${apiPrefix}/repairs`, async (req, res) => {
         const result = await pool.query(`SELECT * FROM repairs ORDER BY id DESC`);
         res.json({ success: true, repairs: result.rows });
     } catch (error) {
-        console.error('Get Repairs Error:', error);
-        res.status(500).json({ success: false, message: 'Database error', error: error.message });
-    }
-});
-
-// เพิ่มรายการแจ้งซ่อม
-app.post(`${apiPrefix}/repairs`, async (req, res) => {
-    const { room_number, description, image_data, status } = req.body;
-    try {
-        const result = await pool.query(
-            `INSERT INTO repairs (room_number, description, image_data, status) VALUES ($1, $2, $3, $4) RETURNING *`,
-            [room_number || 'ไม่ระบุห้อง', description || '', image_data || null, status || 'รอดำเนินการ']
-        );
-        res.json({ success: true, repair: result.rows[0] });
-    } catch (error) {
-        console.error('Create Repair Error:', error);
         res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
 });
 
 // อัปเดตสถานะการแจ้งซ่อม
 app.put(`${apiPrefix}/repairs/:id/status`, async (req, res) => {
-    const { status } = req.body;
     const { id } = req.params;
+    const { status } = req.body;
+
     try {
         const result = await pool.query(
             `UPDATE repairs SET status = $1 WHERE id = $2 RETURNING *`,
             [status, id]
         );
+
         if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
+            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อมที่ต้องการอัปเดต' });
         }
+
         res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว', repair: result.rows[0] });
     } catch (error) {
-        console.error('Update Repair Status Error:', error);
         res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
 });
@@ -3136,41 +3122,18 @@ app.put(`${apiPrefix}/repairs/:id/status`, async (req, res) => {
 // ลบรายการแจ้งซ่อม
 app.delete(`${apiPrefix}/repairs/:id`, async (req, res) => {
     const { id } = req.params;
+
     try {
         const result = await pool.query(`DELETE FROM repairs WHERE id = $1 RETURNING *`, [id]);
+
         if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
+            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อมที่ต้องการลบ' });
         }
+
         res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
     } catch (error) {
-        console.error('Delete Repair Error:', error);
         res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
-});
-
-
-// =====================================================
-// API: ระบบพัสดุ (Parcel)
-// =====================================================
-let mockParcels = [
-    { id: 1, room_number: '102', tracking_no: 'TH12345678', carrier: 'Flash Express', status: 'Waiting' }
-];
-
-app.get(`${apiPrefix}/parcels`, (req, res) => {
-    res.json({ success: true, parcels: mockParcels });
-});
-
-app.post(`${apiPrefix}/parcels`, (req, res) => {
-    const { room_number, tracking_no, carrier } = req.body;
-    const newParcel = { id: Date.now(), room_number, tracking_no, carrier, status: 'Waiting' };
-    mockParcels.unshift(newParcel);
-    res.json({ success: true, message: 'บันทึกพัสดุสำเร็จและแจ้งเตือนไปยังแอปผู้เช่าแล้ว' });
-});
-
-app.put(`${apiPrefix}/parcels/:id`, (req, res) => {
-    const { id } = req.params;
-    mockParcels = mockParcels.map(p => p.id == id ? { ...p, status: 'PickedUp' } : p);
-    res.json({ success: true, message: 'บันทึกการรับพัสดุเรียบร้อย' });
 });
 
 
