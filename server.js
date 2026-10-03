@@ -74,6 +74,15 @@ pool.connect()
                 qr_image TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS repairs (
+                id SERIAL PRIMARY KEY,
+                room_number VARCHAR(50),
+                description TEXT,
+                image_data TEXT,
+                status VARCHAR(50) DEFAULT 'รอดำเนินการ',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS bills (
                 id SERIAL PRIMARY KEY,
                 room_number VARCHAR(50) NOT NULL,
@@ -351,19 +360,15 @@ app.get('/api/tenants', async (req, res) => {
 // LINE REPAIR FLOW & WEBHOOK (ฝั่ง Server)
 // =====================================================
 
-// ตัวแปรสำหรับเก็บ State การแจ้งซ่อมของผู้เช่าชั่วคราว
 const userRepairStates = {}; 
-
 const ADMIN_LINE_ID = process.env.ADMIN_LINE_ID || 'YOUR_ADMIN_LINE_USER_ID';
 
-// ฟังก์ชันดักจับและประมวลผลข้อความจาก LINE Webhook
-async function handleLineWebhookEvent(event, client, db) {
+async function handleLineWebhookEvent(event, client) {
     const userId = event.source.userId;
     const userMessage = event.message?.text?.trim();
 
     // 1. ถ้าผู้เช่าพิมพ์ว่า "แจ้งซ่อม"
     if (event.type === 'message' && event.message.type === 'text' && userMessage === 'แจ้งซ่อม') {
-        // ตั้งสถานะผู้เช่าเป็นกำลังกรอกรายละเอียดแจ้งซ่อม
         userRepairStates[userId] = { step: 'WAITING_DETAIL', details: '', image: null };
         
         await client.replyMessage(event.replyToken, {
@@ -376,7 +381,6 @@ async function handleLineWebhookEvent(event, client, db) {
     // 2. ถ้าผู้เช่าอยู่ในสถานะการแจ้งซ่อม (ส่งข้อความรายละเอียด หรือส่งรูปภาพ)
     if (userRepairStates[userId] && userRepairStates[userId].step === 'WAITING_DETAIL') {
         
-        // ถ้าผู้ใช้ส่งรูปภาพเข้ามา
         if (event.message.type === 'image') {
             try {
                 const stream = await client.getMessageContent(event.message.id);
@@ -385,59 +389,59 @@ async function handleLineWebhookEvent(event, client, db) {
                     chunks.push(chunk);
                 }
                 const buffer = Buffer.concat(chunks);
-                // แปลงรูปเป็น Base64
                 userRepairStates[userId].image = `data:image/jpeg;base64,${buffer.toString('base64')}`;
             } catch (err) {
                 console.error('Error downloading LINE image:', err);
             }
         } 
-        // ถ้าผู้ใช้ส่งข้อความอธิบายเข้ามา
         else if (event.message.type === 'text') {
             userRepairStates[userId].details = userMessage;
         }
 
-        // ค้นหาเลขห้องของผู้เช่าจาก LINE ID ในฐานข้อมูล
-        const tenantRoom = await new Promise((resolve) => {
-            db.get(`SELECT number FROM rooms WHERE line_id = ? OR tenant LIKE ?`, [userId, `%${userId}%`], (err, row) => {
-                resolve(row ? row.number : 'ไม่ระบุห้อง');
-            });
-        });
+        // ค้นหาเลขห้องของผู้เช่าจาก PostgreSQL
+        let tenantRoom = 'ไม่ระบุห้อง';
+        try {
+            const roomRes = await pool.query(
+                `SELECT r.number FROM rooms r LEFT JOIN tenants t ON r.tenant = t.name WHERE t.line_id = $1 OR r.tenant LIKE $2 LIMIT 1`,
+                [userId, `%${userId}%`]
+            );
+            if (roomRes.rows.length > 0) {
+                tenantRoom = roomRes.rows[0].number;
+            }
+        } catch (err) {
+            console.error('Error fetching tenant room:', err);
+        }
 
         const repairData = userRepairStates[userId];
 
-        // บันทึกลงฐานข้อมูล Repaired Table
-        db.run(
-            `INSERT INTO repairs (room_number, description, image_data, status, created_at) VALUES (?, ?, ?, ?, DATETIME('now', 'localtime'))`,
-            [tenantRoom, repairData.details || 'แจ้งซ่อมผ่าน LINE (ดูรูปแนบ)', repairData.image, 'รอดำเนินการ'],
-            async function (err) {
-                if (err) {
-                    console.error('Error saving repair to DB:', err);
-                    await client.replyMessage(event.replyToken, { type: 'text', text: '❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' });
-                    return;
-                }
+        // บันทึกลงฐานข้อมูล PostgreSQL
+        try {
+            await pool.query(
+                `INSERT INTO repairs (room_number, description, image_data, status) VALUES ($1, $2, $3, $4)`,
+                [tenantRoom, repairData.details || 'แจ้งซ่อมผ่าน LINE (ดูรูปแนบ)', repairData.image, 'รอดำเนินการ']
+            );
 
-                // ตอบกลับผู้เช่าว่ารับเรื่องเรียบร้อยแล้ว
-                await client.replyMessage(event.replyToken, {
-                    type: 'text',
-                    text: `✅ **บันทึกการแจ้งซ่อมเรียบร้อยแล้วค่ะ**\n\n🏠 ห้อง: ${tenantRoom}\n📝 รายละเอียด: ${repairData.details || 'แนบรูปภาพ'}\n\nเจ้าหน้าที่จะเร่งดำเนินการเข้าตรวจสอบให้โดยเร็วที่สุดค่ะ`
-                });
+            await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: `✅ **บันทึกการแจ้งซ่อมเรียบร้อยแล้วค่ะ**\n\n🏠 ห้อง: ${tenantRoom}\n📝 รายละเอียด: ${repairData.details || 'แนบรูปภาพ'}\n\nเจ้าหน้าที่จะเร่งดำเนินการเข้าตรวจสอบให้โดยเร็วที่สุดค่ะ`
+            });
 
-                // ล้าง State ของผู้ใช้
-                delete userRepairStates[userId];
+            delete userRepairStates[userId];
 
-                // 🔔 ส่งการแจ้งเตือนไปยัง ADMIN_LINE_ID
-                if (ADMIN_LINE_ID) {
-                    try {
-                        await client.pushMessage(ADMIN_LINE_ID, {
-                            type: 'text',
-                            text: `🚨 **พบการแจ้งซ่อมใหม่!**\n\n🏠 **ห้อง:** ${tenantRoom}\n📝 **รายละเอียด:** ${repairData.details || 'มีการแนบรูปภาพ'}\n\n👉 ให้เข้าไปดูรายละเอียดและจัดการสถานะผ่านเว็บ:\nhttps://homeline-3693.onrender.com/`
-                        });
-                    } catch (pushErr) {
-                        console.error('Push Notification Error:', pushErr);
-                    }
+            if (ADMIN_LINE_ID) {
+                try {
+                    await client.pushMessage(ADMIN_LINE_ID, {
+                        type: 'text',
+                        text: `🚨 **พบการแจ้งซ่อมใหม่!**\n\n🏠 **ห้อง:** ${tenantRoom}\n📝 **รายละเอียด:** ${repairData.details || 'มีการแนบรูปภาพ'}\n\n👉 ให้เข้าไปดูรายละเอียดและจัดการสถานะผ่านเว็บ:\nhttps://homeline-3693.onrender.com/`
+                    });
+                } catch (pushErr) {
+                    console.error('Push Notification Error:', pushErr);
                 }
             }
-        );
+        } catch (err) {
+            console.error('Error saving repair to DB:', err);
+            await client.replyMessage(event.replyToken, { type: 'text', text: '❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' });
+        }
     }
 }
 
@@ -3083,20 +3087,65 @@ app.use((err, req, res, next) => {
 // =====================================================
 // API: ระบบแจ้งซ่อม (Repair)
 // =====================================================
-let mockRepairs = [
-    { id: 1, room_number: '101', issue: 'แอร์ไม่เย็น มีน้ำหยด', status: 'Pending' },
-    { id: 2, room_number: '204', issue: 'หลอดไฟห้องน้ำเสีย', status: 'Completed' }
-];
 
-app.get(`${apiPrefix}/repairs`, (req, res) => {
-    res.json({ success: true, repairs: mockRepairs });
+// ดึงรายการแจ้งซ่อมทั้งหมด
+app.get(`${apiPrefix}/repairs`, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM repairs ORDER BY id DESC`);
+        res.json({ success: true, repairs: result.rows });
+    } catch (error) {
+        console.error('Get Repairs Error:', error);
+        res.status(500).json({ success: false, message: 'Database error', error: error.message });
+    }
 });
 
-app.put(`${apiPrefix}/repairs/:id`, (req, res) => {
-    const { id } = req.params;
+// เพิ่มรายการแจ้งซ่อม
+app.post(`${apiPrefix}/repairs`, async (req, res) => {
+    const { room_number, description, image_data, status } = req.body;
+    try {
+        const result = await pool.query(
+            `INSERT INTO repairs (room_number, description, image_data, status) VALUES ($1, $2, $3, $4) RETURNING *`,
+            [room_number || 'ไม่ระบุห้อง', description || '', image_data || null, status || 'รอดำเนินการ']
+        );
+        res.json({ success: true, repair: result.rows[0] });
+    } catch (error) {
+        console.error('Create Repair Error:', error);
+        res.status(500).json({ success: false, message: 'Database error', error: error.message });
+    }
+});
+
+// อัปเดตสถานะการแจ้งซ่อม
+app.put(`${apiPrefix}/repairs/:id/status`, async (req, res) => {
     const { status } = req.body;
-    mockRepairs = mockRepairs.map(r => r.id == id ? { ...r, status } : r);
-    res.json({ success: true, message: 'อัปเดตสถานะการซ่อมสำเร็จ' });
+    const { id } = req.params;
+    try {
+        const result = await pool.query(
+            `UPDATE repairs SET status = $1 WHERE id = $2 RETURNING *`,
+            [status, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
+        }
+        res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว', repair: result.rows[0] });
+    } catch (error) {
+        console.error('Update Repair Status Error:', error);
+        res.status(500).json({ success: false, message: 'Database error', error: error.message });
+    }
+});
+
+// ลบรายการแจ้งซ่อม
+app.delete(`${apiPrefix}/repairs/:id`, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query(`DELETE FROM repairs WHERE id = $1 RETURNING *`, [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
+        }
+        res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
+    } catch (error) {
+        console.error('Delete Repair Error:', error);
+        res.status(500).json({ success: false, message: 'Database error', error: error.message });
+    }
 });
 
 
