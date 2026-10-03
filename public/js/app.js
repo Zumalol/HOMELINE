@@ -3294,54 +3294,64 @@ function escapeHTML(value) {
 
 let currentRepairs = [];
 
-async function fetchRepairPage() {
-    // ปรับ ID ให้ตรงกับตารางหรือ Container ในไฟล์ /pages/repair.html
-    const container = document.getElementById('repair-table-body'); 
-    if (!container) return;
+// =====================================================
+// REPAIR SYSTEM
+// =====================================================
 
-    container.innerHTML = '<tr><td colspan="5" class="text-center py-4">⏳ กำลังโหลดข้อมูล...</td></tr>';
+async function fetchRepairPage() {
+    // กำหนด ID ของ tbody ในไฟล์ /pages/repair.html ให้ตรงกัน (เช่น 'repair-table-body')
+    const tbody = document.getElementById('repair-table-body'); 
+    
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดข้อมูล...</td></tr>';
 
     try {
-        // 🚨 จุดที่เกิด Error: ตรวจสอบ URL ตรงนี้ให้ตรงกับ Backend (เช่น /api/repairs หรือ /api/repair)
+        // แก้ไข URL API ให้ตรงกับ Backend ของคุณ (เช่น /api/repairs)
         const res = await fetch('/api/repairs'); 
         const data = await res.json();
 
-        if (!res.ok) {
-            throw new Error(data.message || 'API endpoint not found');
-        }
-
+        // รองรับกรณีที่ API ส่งกลับมาเป็น Array ตรงๆ หรืออยู่ใน key เช่น data.repairs
         const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
         if (repairs.length === 0) {
-            container.innerHTML = `
+            tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center py-10 text-gray-400">ยังไม่มีรายการแจ้งซ่อม</td>
+                    <td colspan="5" class="text-center py-8 text-gray-400 font-medium">
+                        ไม่มีรายการแจ้งซ่อมในขณะนี้
+                    </td>
                 </tr>`;
             return;
         }
 
-        // โค้ดสำหรับ Render ข้อมูลลงตาราง (ปรับ property ให้ตรงกับฐานข้อมูล)
-        container.innerHTML = repairs.map(r => `
-            <tr class="border-b hover:bg-gray-50">
-                <td class="p-3">ห้อง ${escapeHTML(r.room_number || '-')}</td>
-                <td class="p-3">${escapeHTML(r.title || '-')}</td>
-                <td class="p-3">${escapeHTML(r.description || '-')}</td>
-                <td class="p-3">
-                    <span class="px-2.5 py-1 rounded-full text-xs font-bold ${r.status === 'เสร็จสิ้น' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}">
-                        ${escapeHTML(r.status || 'รอดำเนินการ')}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = repairs.map(r => {
+            // จัดการป้ายสถานะ (ปรับให้ตรงกับสถานะใน Database ของคุณ)
+            let statusBadge = '';
+            if (r.status === 'เสร็จสิ้น' || r.status === 'Completed') {
+                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ เสร็จสิ้น</span>`;
+            } else if (r.status === 'กำลังดำเนินการ' || r.status === 'In Progress') {
+                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">🛠️ กำลังซ่อม</span>`;
+            } else {
+                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">⏳ รอดำเนินการ</span>`;
+            }
+
+            return `
+                <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+                    <td class="p-3.5 font-bold text-gray-800 text-center">${escapeHTML(r.room_number || r.number || '-')}</td>
+                    <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.description || r.issue || '-')}</td>
+                    <td class="p-3.5 text-sm text-gray-500 text-center">${escapeHTML(r.created_at || r.date || '-')}</td>
+                    <td class="p-3.5 text-center">${statusBadge}</td>
+                    <td class="p-3.5 text-center space-x-2">
+                        <!-- เพิ่มฟังก์ชันอัปเดตสถานะหรือลบตามที่คุณออกแบบไว้ -->
+                        <button onclick="editRepair(${r.id})" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="จัดการ">✏️ จัดการ</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
     } catch (error) {
-        console.error('Fetch Repair Error:', error);
-        container.innerHTML = `
-            <tr>
-                <td colspan="5" class="text-center py-10 text-red-500 font-bold">
-                    ❌ ไม่สามารถดึงข้อมูลได้: ${error.message}
-                </td>
-            </tr>`;
+        console.error('Fetch Repairs Error:', error);
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-rose-500 font-bold bg-rose-50 rounded-xl">❌ ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้</td></tr>`;
     }
 }
 
