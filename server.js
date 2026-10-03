@@ -451,12 +451,12 @@ async function handleLineWebhookEvent(event, client) {
 
 // ดึงรายการแจ้งซ่อมทั้งหมด
 app.get('/api/repairs', (req, res) => {
-    try {
-        const repairs = db.prepare('SELECT * FROM repairs ORDER BY id DESC').all();
-        res.json({ success: true, repairs });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
-    }
+    db.all('SELECT * FROM repairs ORDER BY id DESC', [], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: err.message });
+        }
+        res.json({ success: true, repairs: rows });
+    });
 });
 
 // อัปเดตสถานะการแจ้งซ่อม
