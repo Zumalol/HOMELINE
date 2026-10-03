@@ -448,34 +448,36 @@ async function handleLineWebhookEvent(event, client) {
 // =====================================================
 // API ENDPOINTS FOR REPAIR SYSTEM
 // =====================================================
-
 // ดึงรายการแจ้งซ่อมทั้งหมด
-app.get('/api/repairs', (req, res) => {
-    db.all('SELECT * FROM repairs ORDER BY id DESC', [], (err, rows) => {
-        if (err) {
-            return res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: err.message });
-        }
-        res.json({ success: true, repairs: rows });
-    });
+app.get('/api/repairs', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM repairs ORDER BY id DESC');
+        res.json({ success: true, repairs: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
+    }
 });
 
 // อัปเดตสถานะการแจ้งซ่อม
-app.put('/api/repairs/:id/status', (req, res) => {
+app.put('/api/repairs/:id/status', async (req, res) => {
     const { status } = req.body;
-    db.run(`UPDATE repairs SET status = ? WHERE id = ?`, [status, req.params.id], function(err) {
-        if (err) return res.status(500).json({ success: false, message: err.message });
+    try {
+        await pool.query('UPDATE repairs SET status = $1 WHERE id = $2', [status, req.params.id]);
         res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว' });
-    });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
 
 // ลบรายการแจ้งซ่อม
-app.delete('/api/repairs/:id', (req, res) => {
-    db.run(`DELETE FROM repairs WHERE id = ?`, [req.params.id], function(err) {
-        if (err) return res.status(500).json({ success: false, message: err.message });
+app.delete('/api/repairs/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM repairs WHERE id = $1', [req.params.id]);
         res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
-    });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
 });
-
 /*
 |--------------------------------------------------------------------------
 | TENANTS TABLE & REST API
