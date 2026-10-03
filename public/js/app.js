@@ -3296,24 +3296,51 @@ let currentRepairs = [];
 
 // ดึงข้อมูลรายการแจ้งซ่อมจาก API
 async function fetchRepairPage() {
-    const container = document.getElementById('repair-list') || 
-                      document.getElementById('repair-grid') || 
-                      document.getElementById('repair-table-body');
+    const container = document.getElementById('repair-list') || document.getElementById('repair-table-body');
     if (!container) return;
-
-    container.innerHTML = `<div class="col-span-full text-center py-10 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดรายการแจ้งซ่อม...</div>`;
 
     try {
         const res = await fetch('/api/repairs');
         const data = await res.json();
 
-        if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้');
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || data.error || 'ไม่สามารถโหลดข้อมูลการแจ้งซ่อมได้');
+        }
 
-        currentRepairs = Array.isArray(data) ? data : (data.repairs || data.data || []);
-        renderRepairList(currentRepairs);
+        const repairs = data.repairs || data.data || [];
+
+        if (repairs.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-10 text-gray-400 font-medium">
+                    🛠️ ยังไม่มีรายการแจ้งซ่อมในขณะนี้
+                </div>`;
+            return;
+        }
+
+        // ตัวอย่างการแสดงผลรายการแจ้งซ่อม
+        container.innerHTML = repairs.map(item => `
+            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="font-bold text-gray-800">ห้อง ${escapeHTML(item.room_number || '-')}</span>
+                        <span class="px-2 py-0.5 text-xs font-bold rounded-lg ${
+                            item.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                        }">
+                            ${item.status === 'completed' ? 'ซ่อมเสร็จแล้ว' : 'รอดำเนินการ'}
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600">${escapeHTML(item.description || item.detail || '-')}</p>
+                    <p class="text-xs text-gray-400 mt-1">วันที่แจ้ง: ${escapeHTML(item.created_at || '-')}</p>
+                </div>
+            </div>
+        `).join('');
+
     } catch (error) {
-        console.error('Fetch Repairs Error:', error);
-        container.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 font-bold bg-rose-50 rounded-2xl">❌ ${escapeHTML(error.message)}</div>`;
+        console.error('Fetch Repair Page Error:', error);
+        container.innerHTML = `
+            <div class="col-span-full p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl font-bold text-center">
+                ❌ ${escapeHTML(error.message)}
+            </div>`;
     }
 }
 
