@@ -2674,9 +2674,11 @@ async function openTenantModal(id = null) {
 }
 
 function closeTenantModal() {
-    document.getElementById('tenantModal').classList.add('hidden');
+    const modal = document.getElementById('tenantModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
 }
-
 // บันทึก/แก้ไขข้อมูลผู้เช่า (POST / PUT)
 // บันทึก/แก้ไขข้อมูลผู้เช่า (POST / PUT)
 async function saveTenant(e) {
@@ -3287,156 +3289,150 @@ function escapeHTML(value) {
 }
 
 // =====================================================
-// REPAIR SYSTEM FRONTEND 
+// REPAIR SYSTEM FRONTEND
 // =====================================================
 
 let currentRepairs = [];
 
-// ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมและวาดการ์ด
+// ดึงข้อมูลรายการแจ้งซ่อมจาก API
 async function fetchRepairPage() {
-    const container = document.getElementById('repair-list-container') || document.getElementById('main-content');
-    
+    const container = document.getElementById('repair-list') || 
+                      document.getElementById('repair-grid') || 
+                      document.getElementById('repair-table-body');
+    if (!container) return;
+
+    container.innerHTML = `<div class="col-span-full text-center py-10 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดรายการแจ้งซ่อม...</div>`;
+
     try {
         const res = await fetch('/api/repairs');
         const data = await res.json();
 
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้');
-        }
+        if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้');
 
-        currentRepairs = data.repairs || [];
-        renderRepairCards();
-
+        currentRepairs = Array.isArray(data) ? data : (data.repairs || data.data || []);
+        renderRepairList(currentRepairs);
     } catch (error) {
-        console.error('Fetch Repair Error:', error);
-        if (container) {
-            container.innerHTML = `
-                <div class="p-6 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-center font-bold">
-                    ❌ เกิดข้อผิดพลาด: ${escapeHTML(error.message)}
-                </div>`;
-        }
+        console.error('Fetch Repairs Error:', error);
+        container.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 font-bold bg-rose-50 rounded-2xl">❌ ${escapeHTML(error.message)}</div>`;
     }
 }
 
-// ฟังก์ชันวาดการ์ดรายการแจ้งซ่อม (Tailwind CSS)
-function renderRepairCards() {
-    const container = document.getElementById('repair-list-container');
+// วาดการ์ด/ตารางรายการแจ้งซ่อม
+function renderRepairList(repairs) {
+    const container = document.getElementById('repair-list') || 
+                      document.getElementById('repair-grid') || 
+                      document.getElementById('repair-table-body');
     if (!container) return;
 
-    if (currentRepairs.length === 0) {
+    if (!repairs || repairs.length === 0) {
         container.innerHTML = `
-            <div class="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-3xl border-2 border-dashed border-gray-200">
-                <div class="text-6xl mb-3 opacity-40">🛠️</div>
-                <h3 class="text-lg font-bold text-gray-600">ไม่มีรายการแจ้งซ่อมในขณะนี้</h3>
-                <p class="text-sm text-gray-400 mt-1">เมื่อผู้เช่าแจ้งซ่อมผ่าน LINE รายการจะมาปรากฏที่นี่</p>
+            <div class="col-span-full text-center py-12 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <div class="text-4xl mb-2 opacity-50">🛠️</div>
+                <p class="text-gray-500 font-bold">ยังไม่มีรายการแจ้งซ่อมในระบบ</p>
             </div>`;
         return;
     }
 
-    container.innerHTML = currentRepairs.map(item => {
-        // กำหนดป้ายและสีตามสถานะ
-        let statusBadge = '';
-        let borderAccent = '';
+    const isTable = container.tagName.toLowerCase() === 'tbody';
 
-        if (item.status === 'เสร็จสิ้น') {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">✅ เสร็จสิ้น</span>`;
-            borderAccent = 'border-l-4 border-l-emerald-500';
-        } else if (item.status === 'กำลังดำเนินการ') {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-extrabold bg-blue-100 text-blue-700 border border-blue-200 animate-pulse flex items-center gap-1">🛠️ กำลังดำเนินการ</span>`;
-            borderAccent = 'border-l-4 border-l-blue-500';
-        } else {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-700 border border-amber-200 animate-pulse flex items-center gap-1">⏳ รอดำเนินการ</span>`;
-            borderAccent = 'border-l-4 border-l-amber-500';
-        }
-
-        // รูปภาพแนบการซ่อม
-        const imageHtml = item.image_data 
-            ? `<div class="mt-3 relative rounded-xl overflow-hidden bg-gray-100 border border-gray-200 h-48 group cursor-pointer" onclick="viewRepairImage('${item.image_data}')">
-                <img src="${item.image_data}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
-                <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                    🔍 คลิกเพื่อดูภาพขยาย
-                </div>
-               </div>`
-            : `<div class="mt-3 p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center text-xs text-gray-400">
-                📷 ไม่มีรูปภาพแนบ
-               </div>`;
-
-        return `
-            <div class="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100 ${borderAccent} p-5 flex flex-col justify-between">
-                <div>
-                    <!-- Header การ์ด -->
-                    <div class="flex justify-between items-start mb-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-700 font-extrabold text-lg flex items-center justify-center shadow-xs">
-                                ${escapeHTML(item.room_number || '??')}
-                            </div>
-                            <div>
-                                <h4 class="font-extrabold text-gray-800 text-base">ห้อง ${escapeHTML(item.room_number || '-')}</h4>
-                                <span class="text-[11px] text-gray-400 font-medium">🕒 ${item.created_at || 'ไม่ระบุเวลา'}</span>
-                            </div>
-                        </div>
-                        ${statusBadge}
-                    </div>
-
-                    <!-- รายละเอียดการซ่อม -->
-                    <div class="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                        <p class="text-xs font-bold text-gray-400 mb-1">📝 รายละเอียดการแจ้ง:</p>
-                        <p class="text-sm text-gray-700 font-medium leading-relaxed">${escapeHTML(item.description || 'ไม่ระบุรายละเอียด')}</p>
-                    </div>
-
-                    ${imageHtml}
-                </div>
-
-                <!-- ปุ่มการจัดการสถานะ -->
-                <div class="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
-                    <select onchange="updateRepairStatus(${item.id}, this.value)" class="text-xs font-bold bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                        <option value="รอดำเนินการ" ${item.status === 'รอดำเนินการ' ? 'selected' : ''}>⏳ รอดำเนินการ</option>
-                        <option value="กำลังดำเนินการ" ${item.status === 'กำลังดำเนินการ' ? 'selected' : ''}>🛠️ กำลังดำเนินการ</option>
-                        <option value="เสร็จสิ้น" ${item.status === 'เสร็จสิ้น' ? 'selected' : ''}>✅ เสร็จสิ้น</option>
+    if (isTable) {
+        container.innerHTML = repairs.map(r => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="p-3.5 font-bold text-gray-800">ห้อง ${escapeHTML(r.room_number || r.room || '-')}</td>
+                <td class="p-3.5 font-medium text-gray-700">${escapeHTML(r.title || r.item_name || 'แจ้งซ่อม')}</td>
+                <td class="p-3.5 text-sm text-gray-500 max-w-xs truncate" title="${escapeHTML(r.description || '-')}">${escapeHTML(r.description || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || r.date || '-')}</td>
+                <td class="p-3.5">${getRepairStatusBadge(r.status)}</td>
+                <td class="p-3.5 text-center space-x-2">
+                    <select onchange="updateRepairStatus(${r.id}, this.value)" class="text-xs border rounded-lg p-1.5 bg-white font-medium">
+                        <option value="pending" ${r.status === 'pending' || r.status === 'รอดำเนินการ' ? 'selected' : ''}>⏳ รอดำเนินการ</option>
+                        <option value="in_progress" ${r.status === 'in_progress' || r.status === 'กำลังดำเนินการ' ? 'selected' : ''}>🔧 กำลังซ่อม</option>
+                        <option value="completed" ${r.status === 'completed' || r.status === 'เสร็จสิ้น' ? 'selected' : ''}>✅ เสร็จสิ้น</option>
                     </select>
+                    <button onclick="deleteRepair(${r.id})" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="ลบ">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    } else {
+        container.innerHTML = repairs.map(r => {
+            const imgHtml = (r.image_url || r.image_data)
+                ? `<div class="mt-3 h-40 bg-gray-100 rounded-xl overflow-hidden border">
+                    <img src="${r.image_url || r.image_data}" class="w-full h-full object-cover">
+                   </div>`
+                : '';
 
-                    <button onclick="deleteRepair(${item.id})" class="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors text-xs font-bold flex items-center gap-1" title="ลบรายการนี้">
-                        🗑️ ลบ
-                    </button>
+            return `
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md transition-all flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-start mb-3 border-b pb-2">
+                            <div>
+                                <span class="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-lg">ห้อง ${escapeHTML(r.room_number || r.room || '-')}</span>
+                                <h4 class="font-bold text-gray-800 text-lg mt-2">${escapeHTML(r.title || r.item_name || 'แจ้งซ่อม')}</h4>
+                            </div>
+                            ${getRepairStatusBadge(r.status)}
+                        </div>
+                        <p class="text-sm text-gray-600 mb-2">${escapeHTML(r.description || 'ไม่มีรายละเอียดเพิ่มเติม')}</p>
+                        ${imgHtml}
+                        <p class="text-xs text-gray-400 mt-3">📅 แจ้งเมื่อ: ${escapeHTML(r.created_at || r.date || '-')}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                        <select onchange="updateRepairStatus(${r.id}, this.value)" class="text-xs border rounded-xl p-2 bg-gray-50 font-bold text-gray-700 flex-1">
+                            <option value="pending" ${r.status === 'pending' || r.status === 'รอดำเนินการ' ? 'selected' : ''}>⏳ รอดำเนินการ</option>
+                            <option value="in_progress" ${r.status === 'in_progress' || r.status === 'กำลังดำเนินการ' ? 'selected' : ''}>🔧 กำลังซ่อม</option>
+                            <option value="completed" ${r.status === 'completed' || r.status === 'เสร็จสิ้น' ? 'selected' : ''}>✅ เสร็จสิ้น</option>
+                        </select>
+                        <button onclick="deleteRepair(${r.id})" class="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl transition-colors">
+                            🗑️ ลบ
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
+    }
 }
 
-// อัปเดตสถานะการแจ้งซ่อม
+// สร้างป้ายแสดงสถานะ
+function getRepairStatusBadge(status) {
+    if (status === 'completed' || status === 'เสร็จสิ้น') {
+        return `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">✅ เสร็จสิ้น</span>`;
+    } else if (status === 'in_progress' || status === 'กำลังดำเนินการ') {
+        return `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">🔧 กำลังซ่อม</span>`;
+    } else {
+        return `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700">⏳ รอดำเนินการ</span>`;
+    }
+}
+
+// อัปเดตสถานะการซ่อม
 async function updateRepairStatus(id, newStatus) {
     try {
-        const res = await fetch(`/api/repairs/${id}/status`, {
+        const res = await fetch(`/api/repairs/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
         });
         const data = await res.json();
-
-        if (res.ok && data.success) {
+        if (res.ok) {
+            alert('✅ อัปเดตสถานะการแจ้งซ่อมเรียบร้อยแล้ว');
             await fetchRepairPage();
         } else {
-            alert('❌ ' + (data.message || 'ไม่สามารถเปลี่ยนสถานะได้'));
+            alert('❌ ไม่สามารถอัปเดตสถานะได้: ' + (data.message || ''));
         }
     } catch (e) {
-        console.error('Update Status Error:', e);
-        alert('❌ เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+        console.error('Update Repair Status Error:', e);
+        alert('❌ เกิดข้อผิดพลาดในการเชื่อมต่อ');
     }
 }
 
 // ลบรายการแจ้งซ่อม
 async function deleteRepair(id) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบรายการแจ้งซ่อมนี้?')) return;
-
     try {
         const res = await fetch(`/api/repairs/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-
-        if (res.ok && data.success) {
+        if (res.ok) {
+            alert('✅ ลบรายการแจ้งซ่อมสำเร็จ');
             await fetchRepairPage();
         } else {
-            alert('❌ ' + (data.message || 'ไม่สามารถลบรายการได้'));
+            alert('❌ ไม่สามารถลบรายการได้');
         }
     } catch (e) {
         console.error('Delete Repair Error:', e);
@@ -3444,20 +3440,27 @@ async function deleteRepair(id) {
     }
 }
 
-// แสดง Modal ขยายรูปภาพ
-function viewRepairImage(imgSrc) {
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 cursor-pointer';
-    modal.onclick = () => modal.remove();
-    modal.innerHTML = `
-        <div class="relative max-w-3xl max-h-[90vh] bg-white p-2 rounded-2xl shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
-            <img src="${imgSrc}" class="w-full h-full object-contain rounded-xl max-h-[85vh]">
-            <button onclick="this.closest('.fixed').remove()" class="absolute top-4 right-4 bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold hover:bg-black">✕</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-}
+// กรองรายการแจ้งซ่อมตามคำค้นหาและสถานะ
+function filterRepairs() {
+    const searchKeyword = (document.getElementById('searchRepairInput')?.value || '').toLowerCase();
+    const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
 
+    const filtered = currentRepairs.filter(r => {
+        const matchSearch = (r.room_number || r.room || '').toLowerCase().includes(searchKeyword) ||
+                            (r.title || r.item_name || '').toLowerCase().includes(searchKeyword) ||
+                            (r.description || '').toLowerCase().includes(searchKeyword);
+        let matchStatus = true;
+        if (statusFilter !== 'all') {
+            matchStatus = r.status === statusFilter || 
+                         (statusFilter === 'pending' && r.status === 'รอดำเนินการ') ||
+                         (statusFilter === 'in_progress' && r.status === 'กำลังดำเนินการ') ||
+                         (statusFilter === 'completed' && r.status === 'เสร็จสิ้น');
+        }
+        return matchSearch && matchStatus;
+    });
+
+    renderRepairList(filtered);
+}
 
 // --- 3. ข่าวสารและประกาศ ---
 async function fetchAnnouncementPage() {
