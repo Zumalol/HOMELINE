@@ -3294,53 +3294,54 @@ function escapeHTML(value) {
 
 let currentRepairs = [];
 
-// ดึงข้อมูลรายการแจ้งซ่อมจาก API
 async function fetchRepairPage() {
-    const container = document.getElementById('repair-list') || document.getElementById('repair-table-body');
+    // ปรับ ID ให้ตรงกับตารางหรือ Container ในไฟล์ /pages/repair.html
+    const container = document.getElementById('repair-table-body'); 
     if (!container) return;
 
+    container.innerHTML = '<tr><td colspan="5" class="text-center py-4">⏳ กำลังโหลดข้อมูล...</td></tr>';
+
     try {
-        const res = await fetch('/api/repairs');
+        // 🚨 จุดที่เกิด Error: ตรวจสอบ URL ตรงนี้ให้ตรงกับ Backend (เช่น /api/repairs หรือ /api/repair)
+        const res = await fetch('/api/repairs'); 
         const data = await res.json();
 
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || data.error || 'ไม่สามารถโหลดข้อมูลการแจ้งซ่อมได้');
+        if (!res.ok) {
+            throw new Error(data.message || 'API endpoint not found');
         }
 
-        const repairs = data.repairs || data.data || [];
+        const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
         if (repairs.length === 0) {
             container.innerHTML = `
-                <div class="col-span-full text-center py-10 text-gray-400 font-medium">
-                    🛠️ ยังไม่มีรายการแจ้งซ่อมในขณะนี้
-                </div>`;
+                <tr>
+                    <td colspan="5" class="text-center py-10 text-gray-400">ยังไม่มีรายการแจ้งซ่อม</td>
+                </tr>`;
             return;
         }
 
-        // ตัวอย่างการแสดงผลรายการแจ้งซ่อม
-        container.innerHTML = repairs.map(item => `
-            <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center">
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="font-bold text-gray-800">ห้อง ${escapeHTML(item.room_number || '-')}</span>
-                        <span class="px-2 py-0.5 text-xs font-bold rounded-lg ${
-                            item.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                        }">
-                            ${item.status === 'completed' ? 'ซ่อมเสร็จแล้ว' : 'รอดำเนินการ'}
-                        </span>
-                    </div>
-                    <p class="text-sm text-gray-600">${escapeHTML(item.description || item.detail || '-')}</p>
-                    <p class="text-xs text-gray-400 mt-1">วันที่แจ้ง: ${escapeHTML(item.created_at || '-')}</p>
-                </div>
-            </div>
+        // โค้ดสำหรับ Render ข้อมูลลงตาราง (ปรับ property ให้ตรงกับฐานข้อมูล)
+        container.innerHTML = repairs.map(r => `
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3">ห้อง ${escapeHTML(r.room_number || '-')}</td>
+                <td class="p-3">${escapeHTML(r.title || '-')}</td>
+                <td class="p-3">${escapeHTML(r.description || '-')}</td>
+                <td class="p-3">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold ${r.status === 'เสร็จสิ้น' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}">
+                        ${escapeHTML(r.status || 'รอดำเนินการ')}
+                    </span>
+                </td>
+            </tr>
         `).join('');
 
     } catch (error) {
-        console.error('Fetch Repair Page Error:', error);
+        console.error('Fetch Repair Error:', error);
         container.innerHTML = `
-            <div class="col-span-full p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl font-bold text-center">
-                ❌ ${escapeHTML(error.message)}
-            </div>`;
+            <tr>
+                <td colspan="5" class="text-center py-10 text-red-500 font-bold">
+                    ❌ ไม่สามารถดึงข้อมูลได้: ${error.message}
+                </td>
+            </tr>`;
     }
 }
 

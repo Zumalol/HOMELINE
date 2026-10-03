@@ -445,6 +445,36 @@ async function handleLineWebhookEvent(event, client) {
     }
 }
 
+// =====================================================
+// API ENDPOINTS FOR REPAIR SYSTEM
+// =====================================================
+
+// ดึงรายการแจ้งซ่อมทั้งหมด
+app.get('/api/repairs', (req, res) => {
+    try {
+        const repairs = db.prepare('SELECT * FROM repairs ORDER BY id DESC').all();
+        res.json({ success: true, repairs });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
+    }
+});
+
+// อัปเดตสถานะการแจ้งซ่อม
+app.put('/api/repairs/:id/status', (req, res) => {
+    const { status } = req.body;
+    db.run(`UPDATE repairs SET status = ? WHERE id = ?`, [status, req.params.id], function(err) {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว' });
+    });
+});
+
+// ลบรายการแจ้งซ่อม
+app.delete('/api/repairs/:id', (req, res) => {
+    db.run(`DELETE FROM repairs WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
+    });
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -3056,57 +3086,6 @@ app.use((err, req, res, next) => {
 
 });
 
-// =====================================================
-// API: ระบบแจ้งซ่อม (Repair)
-// =====================================================
-// ดึงรายการแจ้งซ่อมทั้งหมด
-app.get(`${apiPrefix}/repairs`, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM repairs ORDER BY id DESC');
-        res.json({ success: true, repairs: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
-    }
-});
-
-// อัปเดตสถานะการแจ้งซ่อม
-app.put(`${apiPrefix}/repairs/:id/status`, async (req, res) => {
-    const { status } = req.body;
-    const { id } = req.params;
-    try {
-        const result = await pool.query(
-            'UPDATE repairs SET status = $1 WHERE id = $2 RETURNING *',
-            [status, id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
-        }
-
-        res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
-    }
-});
-
-// ลบรายการแจ้งซ่อม
-app.delete(`${apiPrefix}/repairs/:id`, async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query(
-            'DELETE FROM repairs WHERE id = $1 RETURNING *',
-            [id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อม' });
-        }
-
-        res.json({ success: true, message: 'ลบรายการแจ้งซ่อมเรียบร้อยแล้ว' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดที่ Server', error: error.message });
-    }
-});
 
 // =====================================================
 // API: ข่าวสารและประกาศ (Announcements)
