@@ -1382,7 +1382,13 @@ app.post('/webhook', async (req, res) => {
                     }
 
                     // เริ่มต้นสถานะรอรายละเอียด
-                    pendingRepairs.set(userId, { roomNumber: roomRes.rows[0].number, description: '', images: [], step: 'AWAITING_DESC' });
+                    pendingRepairs.set(userId, { 
+                        roomNumber: roomRes.rows[0].number,
+                        tenantName: roomRes.rows[0].tenant, 
+                        description: '',
+                        images: [], 
+                        step: 'AWAITING_DESC' 
+                    });
 
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
@@ -1439,10 +1445,11 @@ app.post('/webhook', async (req, res) => {
                     const imagesJson = JSON.stringify(repairState.images);
                     try {
                         await pool.query(
-                            `INSERT INTO repairs (room_number, description, image_data) VALUES ($1, $2, $3)`,
-                            [repairState.roomNumber, repairState.description, imagesJson]
+                            `INSERT INTO repairs (room_number, issue, image_url, tenant_name) VALUES ($1, $2, $3, $4)`,
+                            [repairState.roomNumber, repairState.description, imagesJson, repairState.tenantName]
                         );
                         pendingRepairs.delete(userId);
+        
                         await fetch('https://api.line.me/v2/bot/message/reply', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
@@ -1451,7 +1458,7 @@ app.post('/webhook', async (req, res) => {
                         
                         // (ตัวเลือกเสริม) แจ้งเตือนแอดมิน 
                         if (process.env.ADMIN_LINE_ID) {
-                           await sendLinePushMessage(process.env.ADMIN_LINE_ID, `📢 มีแจ้งซ่อมใหม่!\nห้อง: ${repairState.roomNumber}\nรายละเอียด: ${repairState.description}\nรูปภาพ: ${repairState.images.length} รูป`);
+                           await sendLinePushMessage(process.env.ADMIN_LINE_ID, `📢 มีแจ้งซ่อมใหม่!\nห้อง: ${repairState.roomNumber}\nรายละเอียด: ${repairState.description}\nรูปภาพ: ${repairState.images.length} รูป\nชื่อผู้เช่า: ${repairState.tenantName}`);
                         }
                     } catch (err) {
                         console.error('Save Repair Error:', err);
