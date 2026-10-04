@@ -3433,14 +3433,14 @@ async function fetchRepairPage() {
                 
                 <div class="bg-gray-50 p-3 rounded-xl border border-gray-100 mb-4 text-sm text-gray-700">
                     <span class="font-semibold text-gray-500">ปัญหาที่แจ้ง:</span> 
-                    <p class="mt-1">${escapeHTML(r.description || 'ไม่ระบุรายละเอียด')}</p>
+                    <p class="mt-1">${escapeHTML(r.issue || 'ไม่ระบุรายละเอียด')}</p>
                 </div>
 
                 <div class="flex items-center gap-2 mt-auto border-t border-gray-50 pt-3">
                     <select onchange="updateRepairStatus(${r.id}, this.value)" class="flex-1 bg-white border border-gray-200 text-gray-700 text-xs rounded-xl px-2 py-2 focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>⏳ รอดำเนินการ</option>
-                        <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>🔧 กำลังซ่อมแซม</option>
-                        <option value="completed" ${r.status === 'completed' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
+                        <option value="รอดำเนินการ" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>⏳ รอดำเนินการ</option>
+                        <option value="กำลังซ่อมแซม" ${r.status === 'กำลังซ่อมแซม' ? 'selected' : ''}>🔧 กำลังซ่อมแซม</option>
+                        <option value="ซ่อมเสร็จสิ้น" ${r.status === 'ซ่อมเสร็จสิ้น' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
                     </select>
                     
                     <button onclick="deleteRepair(${r.id})" class="p-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-500 hover:text-white transition-colors shadow-sm" title="ลบรายการ">
@@ -3458,15 +3458,15 @@ async function fetchRepairPage() {
 
 // ฟังก์ชันแปลงสถานะเป็นสี
 function getRepairStatusColor(status) {
-    if (status === 'completed') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-    if (status === 'in_progress') return 'bg-blue-50 text-blue-700 border border-blue-200';
+    if (status === 'ซ่อมเสร็จสิ้น') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+    if (status === 'กำลังซ่อมแซม') return 'bg-blue-50 text-blue-700 border border-blue-200';
     return 'bg-orange-50 text-orange-700 border border-orange-200';
 }
 
 // ฟังก์ชันแปลงสถานะเป็นภาษาไทย
 function translateRepairStatus(status) {
-    if (status === 'completed') return 'ซ่อมเสร็จสิ้น';
-    if (status === 'in_progress') return 'กำลังดำเนินการ';
+    if (status === 'ซ่อมเสร็จสิ้น') return 'ซ่อมเสร็จสิ้น';
+    if (status === 'กำลังซ่อมแซม') return 'กำลังซ่อมแซม';
     return 'รอดำเนินการ';
 }
 
