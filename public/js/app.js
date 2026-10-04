@@ -3327,9 +3327,9 @@ async function fetchRepairPage() {
                 <td class="p-3.5">
                     <select onchange="updateRepairStatus(${r.id}, this.value)" 
                             class="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-1.5 shadow-sm">
-                        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>รอดำเนินการ</option>
-                        <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>กำลังซ่อม</option>
-                        <option value="completed" ${r.status === 'completed' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
+                        <option value="pending" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
+                        <option value="in_progress" ${r.status === 'กำลังซ่อม' ? 'selected' : ''}>กำลังซ่อม</option>
+                        <option value="completed" ${r.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
                     </select>
                 </td>
                 
@@ -3397,52 +3397,6 @@ async function deleteRepair(id) {
         alert('❌ ' + error.message);
     }
 }
-
-// ฟังก์ชันค้นหาและกรองสถานะ
-function filterRepairs() {
-    const searchKeyword = (document.getElementById('searchRepairInput')?.value || '').toLowerCase();
-    const statusFilter = document.getElementById('repairStatusFilter')?.value || 'all';
-
-    const filtered = currentRepairs.filter(r => {
-        const matchSearch = (r.room_number || '').toLowerCase().includes(searchKeyword);
-        const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-        return matchSearch && matchStatus;
-    });
-
-    renderRepairTable(filtered);
-}
-
-// 2. ฟังก์ชันแสดงรูปภาพขนาดเต็มแบบ Modal (Pop-up)
-window.viewRepairImage = function(imgSrc) {
-    if (!imgSrc || imgSrc === 'null') return alert('ไม่พบไฟล์รูปภาพ');
-    
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 opacity-0 transition-opacity duration-300';
-    modal.onclick = () => {
-        modal.classList.remove('opacity-100');
-        setTimeout(() => document.body.removeChild(modal), 300);
-    };
-    
-    const img = document.createElement('img');
-    img.src = imgSrc;
-    img.className = 'max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain transform scale-95 transition-transform duration-300';
-    img.onclick = (e) => e.stopPropagation(); // กันกดโดนรูปแล้วปิด
-    
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '❌ ปิดหน้าต่าง';
-    closeBtn.className = 'absolute top-6 right-6 text-white bg-red-500/80 hover:bg-red-500 px-4 py-2.5 rounded-xl font-bold shadow-lg backdrop-blur-md transition-all active:scale-95';
-    closeBtn.onclick = () => modal.onclick();
-    
-    modal.appendChild(img);
-    modal.appendChild(closeBtn);
-    document.body.appendChild(modal);
-
-    // Fade-in effect
-    setTimeout(() => {
-        modal.classList.add('opacity-100');
-        img.classList.remove('scale-95');
-    }, 10);
-};
 
 
 // --- 3. ข่าวสารและประกาศ ---
