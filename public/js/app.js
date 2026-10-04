@@ -3329,9 +3329,9 @@ async function fetchRepairPage() {
                 <td class="p-3.5">
                     <select onchange="updateRepairStatus(${r.id}, this.value)" 
                             class="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-1.5 shadow-sm">
-                        <option value="pending" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
-                        <option value="in_progress" ${r.status === 'กำลังซ่อม' ? 'selected' : ''}>กำลังซ่อม</option>
-                        <option value="completed" ${r.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
+                        <option value="รอดำเนินการ" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
+                        <option value="กำลังซ่อม" ${r.status === 'กำลังซ่อม' ? 'selected' : ''}>กำลังซ่อม</option>
+                        <option value="เสร็จสิ้นแล้ว" ${r.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
                     </select>
                 </td>
                 
