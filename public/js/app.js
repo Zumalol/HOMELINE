@@ -3299,59 +3299,55 @@ let currentRepairs = [];
 // =====================================================
 
 async function fetchRepairPage() {
-    // กำหนด ID ของ tbody ในไฟล์ /pages/repair.html ให้ตรงกัน (เช่น 'repair-table-body')
-    const tbody = document.getElementById('repair-table-body'); 
-    
-    if (!tbody) return;
-    
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดข้อมูล...</td></tr>';
-
     try {
-        // แก้ไข URL API ให้ตรงกับ Backend ของคุณ (เช่น /api/repairs)
-        const res = await fetch('/api/repairs'); 
+        const res = await fetch('/api/repairs');
         const data = await res.json();
+        const tbody = document.getElementById('repair-table-body');
+        
+        if (!tbody) return;
 
-        // รองรับกรณีที่ API ส่งกลับมาเป็น Array ตรงๆ หรืออยู่ใน key เช่น data.repairs
-        const repairs = Array.isArray(data) ? data : (data.repairs || []);
-
-        if (repairs.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center py-8 text-gray-400 font-medium">
-                        ไม่มีรายการแจ้งซ่อมในขณะนี้
-                    </td>
-                </tr>`;
+        if (!res.ok) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-rose-500 font-bold">ไม่สามารถโหลดข้อมูลได้</td></tr>`;
             return;
         }
 
+        // ปรับตัวแปรให้ตรงกับโครงสร้างข้อมูลที่ API ส่งมา
+        const repairs = data.repairs || data;
+        
+        if (repairs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400 font-medium">ยังไม่มีรายการแจ้งซ่อม</td></tr>`;
+            return;
+        }
+
+        // วาดตารางและใส่ Dropdown ที่มี onchange="updateRepairStatus(id, value)"
         tbody.innerHTML = repairs.map(r => {
-            // จัดการป้ายสถานะ (ปรับให้ตรงกับสถานะใน Database ของคุณ)
-            let statusBadge = '';
-            if (r.status === 'เสร็จสิ้น' || r.status === 'Completed') {
-                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ เสร็จสิ้น</span>`;
-            } else if (r.status === 'กำลังดำเนินการ' || r.status === 'In Progress') {
-                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">🛠️ กำลังซ่อม</span>`;
-            } else {
-                statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700">⏳ รอดำเนินการ</span>`;
-            }
+            // กำหนดสีพื้นหลังให้ Dropdown ตามสถานะ
+            let statusColor = 'bg-orange-50 text-orange-700 border-orange-200';
+            if (r.status === 'กำลังซ่อมแซม') statusColor = 'bg-blue-50 text-blue-700 border-blue-200';
+            if (r.status === 'เสร็จสิ้น') statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
             return `
-                <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
-                    <td class="p-3.5 font-bold text-gray-800 text-center">${escapeHTML(r.room_number || r.number || '-')}</td>
-                    <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.description || r.issue || '-')}</td>
-                    <td class="p-3.5 text-sm text-gray-500 text-center">${escapeHTML(r.created_at || r.date || '-')}</td>
-                    <td class="p-3.5 text-center">${statusBadge}</td>
-                    <td class="p-3.5 text-center space-x-2">
-                        <!-- เพิ่มฟังก์ชันอัปเดตสถานะหรือลบตามที่คุณออกแบบไว้ -->
-                        <button onclick="editRepair(${r.id})" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="จัดการ">✏️ จัดการ</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
+                <td class="p-3.5 text-gray-600">${escapeHTML(r.description || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-500">${new Date(r.created_at).toLocaleDateString('th-TH')}</td>
+                <td class="p-3.5">
+                    <select onchange="updateRepairStatus(${r.id}, this.value)" 
+                            class="border rounded-lg p-1.5 text-sm font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500 ${statusColor}">
+                        <option value="รอดำเนินการ" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
+                        <option value="กำลังซ่อมแซม" ${r.status === 'กำลังซ่อมแซม' ? 'selected' : ''}>กำลังซ่อมแซม</option>
+                        <option value="เสร็จสิ้น" ${r.status === 'เสร็จสิ้น' ? 'selected' : ''}>เสร็จสิ้น</option>
+                    </select>
+                </td>
+                <td class="p-3.5 text-center">
+                    <button onclick="deleteRepair(${r.id})" class="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-lg transition-colors">
+                        🗑️
+                    </button>
+                </td>
+            </tr>
+        `}).join('');
     } catch (error) {
-        console.error('Fetch Repairs Error:', error);
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-rose-500 font-bold bg-rose-50 rounded-xl">❌ ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้</td></tr>`;
+        console.error('Error fetching repairs:', error);
     }
 }
 
@@ -3440,7 +3436,7 @@ function getRepairStatusBadge(status) {
     }
 }
 
-// อัปเดตสถานะการซ่อม
+// ฟังก์ชันบันทึกสถานะเมื่อผู้ใช้กดเปลี่ยน Dropdown
 async function updateRepairStatus(id, newStatus) {
     try {
         const res = await fetch(`/api/repairs/${id}`, {
@@ -3448,16 +3444,19 @@ async function updateRepairStatus(id, newStatus) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
         });
+        
         const data = await res.json();
+        
         if (res.ok) {
-            alert('✅ อัปเดตสถานะการแจ้งซ่อมเรียบร้อยแล้ว');
+            // โหลดตารางใหม่เพื่ออัปเดตสี Badge ทันที
             await fetchRepairPage();
         } else {
-            alert('❌ ไม่สามารถอัปเดตสถานะได้: ' + (data.message || ''));
+            alert('❌ ไม่สามารถอัปเดตสถานะได้: ' + (data.message || 'เกิดข้อผิดพลาด'));
+            await fetchRepairPage(); // รีโหลดค่าเดิมกลับมากรณี Error
         }
-    } catch (e) {
-        console.error('Update Repair Status Error:', e);
-        alert('❌ เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } catch (error) {
+        console.error('Update Status Error:', error);
+        alert('❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
     }
 }
 

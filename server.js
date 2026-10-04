@@ -356,94 +356,6 @@ app.get('/api/tenants', async (req, res) => {
         res.status(500).json({ success: false, message: 'Database error', error: error.message });
     }
 });
-// =====================================================
-// LINE REPAIR FLOW & WEBHOOK (ฝั่ง Server)
-// =====================================================
-
-const userRepairStates = {}; 
-const ADMIN_LINE_ID = process.env.ADMIN_LINE_ID || 'YOUR_ADMIN_LINE_USER_ID';
-
-async function handleLineWebhookEvent(event, client) {
-    const userId = event.source.userId;
-    const userMessage = event.message?.text?.trim();
-
-    // 1. ถ้าผู้เช่าพิมพ์ว่า "แจ้งซ่อม"
-    if (event.type === 'message' && event.message.type === 'text' && userMessage === 'แจ้งซ่อม') {
-        userRepairStates[userId] = { step: 'WAITING_DETAIL', details: '', image: null };
-        
-        await client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: '🔧 **ระบบแจ้งซ่อม**\n\nกรุณาพิมพ์รายละเอียดปัญหาที่ต้องการแจ้งซ่อม (เช่น ท่อน้ำรั่ว, แอร์ไม่เย็น) พร้อมแนบรูปภาพถ่ายปัญหา (ถ้ามี) มาได้เลยครับ'
-        });
-        return;
-    }
-
-    // 2. ถ้าผู้เช่าอยู่ในสถานะการแจ้งซ่อม (ส่งข้อความรายละเอียด หรือส่งรูปภาพ)
-    if (userRepairStates[userId] && userRepairStates[userId].step === 'WAITING_DETAIL') {
-        
-        if (event.message.type === 'image') {
-            try {
-                const stream = await client.getMessageContent(event.message.id);
-                const chunks = [];
-                for await (const chunk of stream) {
-                    chunks.push(chunk);
-                }
-                const buffer = Buffer.concat(chunks);
-                userRepairStates[userId].image = `data:image/jpeg;base64,${buffer.toString('base64')}`;
-            } catch (err) {
-                console.error('Error downloading LINE image:', err);
-            }
-        } 
-        else if (event.message.type === 'text') {
-            userRepairStates[userId].details = userMessage;
-        }
-
-        // ค้นหาเลขห้องของผู้เช่าจาก PostgreSQL
-        let tenantRoom = 'ไม่ระบุห้อง';
-        try {
-            const roomRes = await pool.query(
-                `SELECT r.number FROM rooms r LEFT JOIN tenants t ON r.tenant = t.name WHERE t.line_id = $1 OR r.tenant LIKE $2 LIMIT 1`,
-                [userId, `%${userId}%`]
-            );
-            if (roomRes.rows.length > 0) {
-                tenantRoom = roomRes.rows[0].number;
-            }
-        } catch (err) {
-            console.error('Error fetching tenant room:', err);
-        }
-
-        const repairData = userRepairStates[userId];
-
-        // บันทึกลงฐานข้อมูล PostgreSQL
-        try {
-            await pool.query(
-                `INSERT INTO repairs (room_number, description, image_data, status) VALUES ($1, $2, $3, $4)`,
-                [tenantRoom, repairData.details || 'แจ้งซ่อมผ่าน LINE (ดูรูปแนบ)', repairData.image, 'รอดำเนินการ']
-            );
-
-            await client.replyMessage(event.replyToken, {
-                type: 'text',
-                text: `✅ **บันทึกการแจ้งซ่อมเรียบร้อยแล้วค่ะ**\n\n🏠 ห้อง: ${tenantRoom}\n📝 รายละเอียด: ${repairData.details || 'แนบรูปภาพ'}\n\nเจ้าหน้าที่จะเร่งดำเนินการเข้าตรวจสอบให้โดยเร็วที่สุดค่ะ`
-            });
-
-            delete userRepairStates[userId];
-
-            if (ADMIN_LINE_ID) {
-                try {
-                    await client.pushMessage(ADMIN_LINE_ID, {
-                        type: 'text',
-                        text: `🚨 **พบการแจ้งซ่อมใหม่!**\n\n🏠 **ห้อง:** ${tenantRoom}\n📝 **รายละเอียด:** ${repairData.details || 'มีการแนบรูปภาพ'}\n\n👉 ให้เข้าไปดูรายละเอียดและจัดการสถานะผ่านเว็บ:\nhttps://homeline-3693.onrender.com/`
-                    });
-                } catch (pushErr) {
-                    console.error('Push Notification Error:', pushErr);
-                }
-            }
-        } catch (err) {
-            console.error('Error saving repair to DB:', err);
-            await client.replyMessage(event.replyToken, { type: 'text', text: '❌ เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง' });
-        }
-    }
-}
 
 // =====================================================
 // API ENDPOINTS FOR REPAIR SYSTEM
@@ -723,6 +635,7 @@ app.get(`${apiPrefix}/payment-accounts/:id/qr`, async (req, res) => {
 */
 
 const pendingSlipBills = new Map();
+const pendingRepairs = new Map();
 
 app.post('/webhook', async (req, res) => {
     const signature = req.headers['x-line-signature'];
@@ -1445,22 +1358,167 @@ app.post('/webhook', async (req, res) => {
                     })
                 });
             }
+
+            // 🟢 ดักจับระบบแจ้งซ่อม (ข้อความและการยืนยัน)
+            const text = event.message.text;
+            const userId = event.source.userId;
+
+            if (text === 'แจ้งซ่อม') {
+                try {
+                    // หาห้องพักจาก line_id
+                    const roomRes = await pool.query(`
+                        SELECT r.* FROM rooms r
+                        JOIN tenants t ON r.tenant = t.name
+                        WHERE t.line_id = $1
+                    `, [userId]);
+
+                    if (roomRes.rows.length === 0) {
+                        await fetch('https://api.line.me/v2/bot/message/reply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ไม่พบข้อมูลห้องพักที่ผูกกับบัญชี LINE ของคุณครับ' }] })
+                        });
+                        return;
+                    }
+
+                    // เริ่มต้นสถานะรอรายละเอียด
+                    pendingRepairs.set(userId, { roomNumber: roomRes.rows[0].number, description: '', images: [], step: 'AWAITING_DESC' });
+
+                    await fetch('https://api.line.me/v2/bot/message/reply', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                        body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: `🛠️ แจ้งซ่อมห้อง ${roomRes.rows[0].number}\nกรุณาพิมพ์ "รายละเอียด" หรือ "อาการ" ที่ต้องการแจ้งซ่อมได้เลยครับ` }] })
+                    });
+                    return;
+                } catch (error) {
+                    console.error('Repair Init Error:', error);
+                }
+            }
+
+            // จัดการสนทนาต่อหากอยู่ในสถานะแจ้งซ่อม
+            if (pendingRepairs.has(userId)) {
+                const repairState = pendingRepairs.get(userId);
+
+                if (text === 'ยกเลิกการแจ้งซ่อม') {
+                    pendingRepairs.delete(userId);
+                    await fetch('https://api.line.me/v2/bot/message/reply', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                        body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ยกเลิกรายการแจ้งซ่อมเรียบร้อยครับ' }] })
+                    });
+                    return;
+                }
+
+                if (repairState.step === 'AWAITING_DESC') {
+                    repairState.description = text;
+                    repairState.step = 'AWAITING_IMAGES';
+                    pendingRepairs.set(userId, repairState);
+
+                    // สร้าง Quick Reply ให้กดส่งรูปหรือยืนยัน
+                    const quickReplyMessage = {
+                        type: 'text',
+                        text: `รับทราบครับ อาการคือ: "${text}"\n📸 หากมีรูปภาพประกอบสามารถ "ส่งรูปภาพ" มาได้เลยครับ\n\n✅ หากไม่มี หรือส่งรูปครบแล้ว ให้กดปุ่ม "ยืนยันการแจ้งซ่อม" ด้านล่างนี้ครับ`,
+                        quickReply: {
+                            items: [
+                                { type: 'action', action: { type: 'message', label: 'ยืนยันการแจ้งซ่อม', text: 'ยืนยันการแจ้งซ่อม' } },
+                                { type: 'action', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิกการแจ้งซ่อม' } }
+                            ]
+                        }
+                    };
+
+                    await fetch('https://api.line.me/v2/bot/message/reply', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                        body: JSON.stringify({ replyToken: event.replyToken, messages: [quickReplyMessage] })
+                    });
+                    return;
+                }
+
+                if (repairState.step === 'AWAITING_IMAGES' && text === 'ยืนยันการแจ้งซ่อม') {
+                    // บันทึกลงฐานข้อมูล
+                    const imagesJson = JSON.stringify(repairState.images);
+                    try {
+                        await pool.query(
+                            `INSERT INTO repairs (room_number, description, image_data) VALUES ($1, $2, $3)`,
+                            [repairState.roomNumber, repairState.description, imagesJson]
+                        );
+                        pendingRepairs.delete(userId);
+                        await fetch('https://api.line.me/v2/bot/message/reply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ บันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้ว แอดมินจะรีบตรวจสอบให้ครับ' }] })
+                        });
+                        
+                        // (ตัวเลือกเสริม) แจ้งเตือนแอดมิน 
+                        if (process.env.ADMIN_LINE_ID) {
+                           await sendLinePushMessage(process.env.ADMIN_LINE_ID, `📢 มีแจ้งซ่อมใหม่!\nห้อง: ${repairState.roomNumber}\nรายละเอียด: ${repairState.description}\nรูปภาพ: ${repairState.images.length} รูป`);
+                        }
+                    } catch (err) {
+                        console.error('Save Repair Error:', err);
+                    }
+                    return;
+                }
+            }
             
 
-            // 2. ดักจับเมื่อผู้เช่า "ส่งรูปภาพสลิป" เข้ามาใน LINE
+           // 2. ดักจับเมื่อผู้เช่าส่งรูปภาพเข้ามาใน LINE
             if (event.type === 'message' && event.message.type === 'image') {
+                const userId = event.source.userId;
                 const messageId = event.message.id;
-                const pendingBill = pendingSlipBills.get(event.source.userId) || '';
-                
-                // ดึงรูปภาพจาก LINE API
-                const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
-                    headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
-                });
-                
-                if (imageRes.ok) {
-                    const imageBuffer = await imageRes.arrayBuffer();
-                    const formData = new FormData();
-                    formData.append('files', new Blob([imageBuffer], { type: 'image/jpeg' }), 'slip.jpg');
+
+                // 🟢 กรณี 1: ตรวจสอบว่ากำลังอยู่ในขั้นตอนส่งรูป "แจ้งซ่อม" หรือไม่
+                if (pendingRepairs.has(userId) && pendingRepairs.get(userId).step === 'AWAITING_IMAGES') {
+                    const repairState = pendingRepairs.get(userId);
+                    
+                    const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+                        headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+                    });
+
+                    if (imageRes.ok) {
+                        const imageBuffer = await imageRes.arrayBuffer();
+                        const buffer = Buffer.from(imageBuffer);
+                        
+                        try {
+                            // อัปโหลดขึ้น Cloudinary ด้วยฟังก์ชันที่มีอยู่แล้ว
+                            const uploadResult = await uploadBufferToCloudinary(buffer, 'repair_images');
+                            repairState.images.push(uploadResult.secure_url);
+                            pendingRepairs.set(userId, repairState);
+
+                            const quickReplyMessage = {
+                                type: 'text',
+                                text: `📸 ได้รับรูปภาพที่ ${repairState.images.length} เรียบร้อยครับ\nสามารถส่งรูปเพิ่มเติมได้ หรือหากครบแล้วกด "ยืนยันการแจ้งซ่อม"`,
+                                quickReply: {
+                                    items: [
+                                        { type: 'action', action: { type: 'message', label: 'ยืนยันการแจ้งซ่อม', text: 'ยืนยันการแจ้งซ่อม' } },
+                                        { type: 'action', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิกการแจ้งซ่อม' } }
+                                    ]
+                                }
+                            };
+
+                            await fetch('https://api.line.me/v2/bot/message/reply', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                                body: JSON.stringify({ replyToken: event.replyToken, messages: [quickReplyMessage] })
+                            });
+                        } catch (err) {
+                            console.error('Upload Repair Image Error:', err);
+                        }
+                    }
+                } 
+                // 🟢 กรณี 2: โฟลว์ปกติ (เช็คสลิปโอนเงินเดิม)
+                else {
+                    const pendingBill = pendingSlipBills.get(event.source.userId) || '';
+                    
+                    // ดึงรูปภาพจาก LINE API
+                    const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+                        headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+                    });
+                    
+                    if (imageRes.ok) {
+                        const imageBuffer = await imageRes.arrayBuffer();
+                        const formData = new FormData();
+                        formData.append('files', new Blob([imageBuffer], { type: 'image/jpeg' }), 'slip.jpg');
+                    
 
                     // ส่งรูปไปตรวจที่ SlipOK
                     const slipRes = await fetch(`https://api.slipok.com/api/line/apikey/${process.env.SLIPOK_BRANCH_ID}`, {
@@ -1566,6 +1624,7 @@ app.post('/webhook', async (req, res) => {
                     }
                 }
             }
+        }
 
             // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
             if (event.type === 'postback') {
