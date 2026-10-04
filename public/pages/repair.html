@@ -1,57 +1,134 @@
-<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-    <!-- ส่วนหัวและตัวกรอง -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+<!-- /pages/repair.html -->
+<div class="space-y-6 animate-fade-in w-full max-w-7xl mx-auto pb-10">
+    
+    <!-- ส่วนหัวและเครื่องมือค้นหา -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
-            <h2 class="text-2xl font-black text-gray-800">🔧 รายการแจ้งซ่อม</h2>
-            <p class="text-sm text-gray-500 mt-1">ติดตามและจัดการรายการแจ้งซ่อมจากผู้เช่า</p>
+            <h2 class="text-2xl font-black text-gray-800 flex items-center gap-2">
+                <span class="p-2 bg-indigo-50 text-indigo-600 rounded-xl">🛠️</span> 
+                รายการแจ้งซ่อมจากผู้เช่า
+            </h2>
+            <p class="text-sm text-gray-500 mt-2 font-medium">ติดตามสถานะและอัปเดตงานซ่อมแซมภายในหอพัก</p>
         </div>
-        <div class="flex gap-2 w-full sm:w-auto">
-            <select id="repairStatusFilter" onchange="filterRepairs()" class="bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none">
+        
+        <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <div class="relative w-full sm:w-64">
+                <span class="absolute inset-y-0 left-3 flex items-center text-gray-400">🔍</span>
+                <input type="text" id="searchRepair" placeholder="ค้นหาเลขห้อง, อาการ..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all shadow-sm bg-gray-50 focus:bg-white">
+            </div>
+            <select id="filterRepairStatus" class="px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm font-medium bg-white text-gray-700 cursor-pointer">
                 <option value="all">สถานะทั้งหมด</option>
-                <option value="Pending">🔴 รอดำเนินการ</option>
-                <option value="In Progress">🟡 กำลังซ่อมแซม</option>
-                <option value="Completed">🟢 เสร็จสิ้น</option>
+                <option value="pending">🔴 รอดำเนินการ</option>
+                <option value="progress">🟡 กำลังซ่อมแซม</option>
+                <option value="completed">✅ ซ่อมเสร็จสิ้น</option>
             </select>
-            <input type="text" id="searchRepairInput" onkeyup="filterRepairs()" placeholder="ค้นหาเลขห้อง..." class="bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none w-full sm:w-64">
         </div>
     </div>
 
-    <!-- ตารางแจ้งซ่อม -->
-    <div class="overflow-x-auto rounded-xl border border-gray-100">
-        <table class="w-full text-left border-collapse whitespace-nowrap">
-            <thead>
-                <tr class="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
-                    <th class="p-4 font-bold w-32">วันที่แจ้ง</th>
-                    <th class="p-4 font-bold w-24">ห้อง</th>
-                    <th class="p-4 font-bold">รายละเอียดปัญหา</th>
-                    <th class="p-4 font-bold w-32">ดูรูปภาพ</th>
-                    <th class="p-4 font-bold w-32">ผู้แจ้ง</th>
-                    <th class="p-4 font-bold w-32 text-center">สถานะ</th>
-                    <th class="p-4 font-bold w-24 text-center">จัดการ</th>
-                </tr>
-            </thead>
-            <!-- แทนที่ <tbody> เดิมด้วยโค้ดนี้ เพื่อแก้ปัญหา colspan ให้ครบ 7 ช่อง -->
-            <tbody id="repair-table-body" class="text-gray-700 divide-y divide-gray-100">
-                <tr>
-                    <td colspan="7" class="text-center py-10 text-indigo-400 font-medium animate-pulse">
-                        ⏳ กำลังโหลดข้อมูลแจ้งซ่อม...
-                    </td>
-                </tr>
-            </tbody>
-
-
-        </table>
-    </div>
-</div>
-<!-- เพิ่มโค้ด Modal สำหรับดูรูปภาพ ไว้ต่อจาก </div> ปิดท้ายสุดของไฟล์ -->
-<div id="repairImageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity">
-    <div class="relative bg-white rounded-2xl p-4 max-w-3xl w-full mx-4 shadow-2xl">
-        <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
-            <h3 class="text-lg font-black text-gray-800">📸 รูปภาพแจ้งซ่อม</h3>
-            <button onclick="closeRepairImageModal()" class="text-gray-400 hover:text-rose-500 font-bold text-2xl transition-colors">&times;</button>
+    <!-- การ์ดสรุปสถานะ (Overview Cards) -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- รอดำเนินการ -->
+        <div class="bg-gradient-to-br from-rose-50 to-white p-5 rounded-2xl border border-rose-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+            <div>
+                <p class="text-rose-600 text-sm font-bold">รอดำเนินการ</p>
+                <h3 class="text-3xl font-black text-rose-700 mt-1" id="repair-pending-count">0</h3>
+            </div>
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-xl shadow-inner">
+                🚨
+            </div>
         </div>
-        <div class="flex justify-center bg-gray-50 rounded-xl overflow-hidden p-2 border border-gray-100">
-            <img id="modalImagePreview" src="" class="max-h-[70vh] object-contain rounded-lg">
+        
+        <!-- กำลังดำเนินการ -->
+        <div class="bg-gradient-to-br from-amber-50 to-white p-5 rounded-2xl border border-amber-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+            <div>
+                <p class="text-amber-600 text-sm font-bold">กำลังซ่อมแซม</p>
+                <h3 class="text-3xl font-black text-amber-700 mt-1" id="repair-progress-count">0</h3>
+            </div>
+            <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-xl shadow-inner">
+                🚧
+            </div>
+        </div>
+
+        <!-- เสร็จสิ้น -->
+        <div class="bg-gradient-to-br from-emerald-50 to-white p-5 rounded-2xl border border-emerald-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+            <div>
+                <p class="text-emerald-600 text-sm font-bold">ซ่อมเสร็จสิ้นเดือนนี้</p>
+                <h3 class="text-3xl font-black text-emerald-700 mt-1" id="repair-completed-count">0</h3>
+            </div>
+            <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xl shadow-inner">
+                ✨
+            </div>
+        </div>
+    </div>
+
+    <!-- ตารางรายการแจ้งซ่อม -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100 text-sm text-gray-500">
+                        <th class="p-4 font-semibold whitespace-nowrap">วันที่แจ้ง</th>
+                        <th class="p-4 font-semibold">ห้องพัก</th>
+                        <th class="p-4 font-semibold">รายละเอียดปัญหา</th>
+                        <th class="p-4 font-semibold">ภาพประกอบ</th>
+                        <th class="p-4 font-semibold">สถานะ</th>
+                        <th class="p-4 font-semibold text-center rounded-tr-2xl">การจัดการ</th>
+                    </tr>
+                </thead>
+                <!-- ID สำหรับให้ fetchRepairPage() นำข้อมูลมาแสดง -->
+                <tbody id="repair-table-body" class="divide-y divide-gray-100">
+                    
+                    <!-- Placeholder ขณะรอโหลดข้อมูล -->
+                    <tr id="repair-loading-row">
+                        <td colspan="6" class="text-center py-12 text-indigo-400 font-medium animate-pulse">
+                            ⏳ กำลังโหลดรายการแจ้งซ่อม...
+                        </td>
+                    </tr>
+
+                    <!-- ตัวอย่างโครงสร้าง Row ที่ JS ควรสร้าม (สามารถลบออกได้) -->
+                    <!-- 
+                    <tr class="hover:bg-indigo-50/30 transition-colors group">
+                        <td class="p-4 text-sm text-gray-600">10 ก.ย. 26<br><span class="text-xs text-gray-400">14:30 น.</span></td>
+                        <td class="p-4">
+                            <span class="font-bold text-gray-800 text-lg">204</span>
+                            <div class="text-xs text-gray-500">คุณสมชาย</div>
+                        </td>
+                        <td class="p-4">
+                            <p class="text-sm font-medium text-gray-800">แอร์น้ำหยด</p>
+                            <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">น้ำหยดลงมาตรงปลายเตียงตลอดคืน</p>
+                        </td>
+                        <td class="p-4">
+                            <button class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center gap-1">
+                                🖼️ ดูรูป
+                            </button>
+                        </td>
+                        <td class="p-4">
+                            <span class="px-3 py-1 bg-rose-50 text-rose-600 border border-rose-100 rounded-full text-xs font-bold flex items-center gap-1.5 w-max">
+                                <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> รอดำเนินการ
+                            </span>
+                        </td>
+                        <td class="p-4 text-center">
+                            <div class="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-colors shadow-sm" title="อัปเดตสถานะ">
+                                    ✏️
+                                </button>
+                                <button class="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-colors shadow-sm" title="แจ้งสถานะกลับผ่าน LINE Messaging">
+                                    💬
+                                </button>
+                                <button class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-colors shadow-sm" title="ลบรายการ">
+                                    🗑️
+                                </button>
+                            </div>
+                        </td>
+                    </tr> 
+                    -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        <div id="repair-pagination" class="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center text-sm text-gray-500">
+            <!-- ข้อมูล Pagination จะถูกเติมโดย JS -->
         </div>
     </div>
 </div>
