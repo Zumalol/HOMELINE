@@ -3315,7 +3315,7 @@ async function fetchRepairPage() {
         container.innerHTML = repairs.map(r => {
             // ดักจับ Key ข้อมูลเผื่อ LINE ส่งมาชื่อแปลกๆ
             const roomNo = r.room_number || r.room || r.number || '-';
-            const problem = r.problem || r.title || 'ไม่ระบุ';
+            const problem = r.issue || r.title || 'ไม่ระบุ';
             const detail = r.description || r.detail || '-';
             const imgUrl = r.image_url || r.image_data || r.image || null;
             
