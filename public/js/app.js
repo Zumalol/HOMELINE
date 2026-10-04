@@ -3289,6 +3289,107 @@ function escapeHTML(value) {
 }
 
 // =====================================================
+// REPAIR IMAGE MODAL SYSTEM
+// =====================================================
+let currentRepairImages = [];
+let currentRepairImageIndex = 0;
+
+function openRepairImageModal(encodedImages) {
+    try {
+        currentRepairImages = JSON.parse(decodeURIComponent(encodedImages));
+    } catch (e) {
+        currentRepairImages = [];
+    }
+
+    if (!currentRepairImages || currentRepairImages.length === 0) return;
+
+    currentRepairImageIndex = 0;
+    updateRepairImageDisplay();
+
+    const modal = document.getElementById('repairImageModal');
+    const content = document.getElementById('repairModalContent');
+    
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // Animate In
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }, 10);
+}
+
+function closeRepairImageModal() {
+    const modal = document.getElementById('repairImageModal');
+    const content = document.getElementById('repairModalContent');
+    
+    // Animate Out
+    modal.classList.add('opacity-0');
+    content.classList.remove('scale-100');
+    content.classList.add('scale-95');
+    
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.getElementById('repairModalImg').src = ''; // เคลียร์รูป
+    }, 300);
+}
+
+function changeRepairImage(direction) {
+    currentRepairImageIndex += direction;
+    
+    // วนลูปรูปภาพ
+    if (currentRepairImageIndex < 0) {
+        currentRepairImageIndex = currentRepairImages.length - 1;
+    } else if (currentRepairImageIndex >= currentRepairImages.length) {
+        currentRepairImageIndex = 0;
+    }
+    
+    updateRepairImageDisplay();
+}
+
+function updateRepairImageDisplay() {
+    const img = document.getElementById('repairModalImg');
+    const indicator = document.getElementById('repairImageIndicator');
+    const prevBtn = document.getElementById('repairPrevBtn');
+    const nextBtn = document.getElementById('repairNextBtn');
+
+    // ใส่เอฟเฟกต์ Fade กระพริบเล็กน้อยตอนเปลี่ยนรูป
+    img.style.opacity = '0';
+    setTimeout(() => {
+        img.src = currentRepairImages[currentRepairImageIndex];
+        img.style.opacity = '1';
+    }, 150);
+
+    indicator.innerText = `${currentRepairImageIndex + 1} / ${currentRepairImages.length}`;
+
+    // ซ่อนปุ่มเลื่อนถ้ามีรูปเดียว
+    if (currentRepairImages.length > 1) {
+        prevBtn.style.display = 'block';
+        nextBtn.style.display = 'block';
+        indicator.style.display = 'block';
+    } else {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+        indicator.style.display = 'none';
+    }
+}
+
+// ปิด Modal เมื่อคลิกพื้นที่ว่างสีดำ
+document.addEventListener('DOMContentLoaded', () => {
+    // หากใส่ HTML ของ Modal ไว้ใน JS ให้ append ลง body ตรงนี้ได้เลย
+    // document.body.insertAdjacentHTML('beforeend', modalHtmlString);
+    
+    const modal = document.getElementById('repairImageModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeRepairImageModal();
+        });
+    }
+});
+
+// =====================================================
 // REPAIR SYSTEM (ระบบแจ้งซ่อม)
 // =====================================================
 
@@ -3315,20 +3416,31 @@ async function fetchRepairPage() {
                 </tr>`;
             return;
         }
+        // ดึงข้อมูลรูปภาพและแปลงเป็น Array (เผื่อกรณีมีหลายรูป)
+        let repairImages = [];
+        if (r.image_url) {
+            try {
+                const parsed = JSON.parse(r.image_url);
+                repairImages = Array.isArray(parsed) ? parsed : [r.image_url];
+            } catch (e) {
+                repairImages = [r.image_url]; // กรณีเป็น URL ธรรมดาที่ไม่ใช่ JSON
+            }
+        }
+
+        // สร้างปุ่มดูรูปภาพ
+        const imageHtml = repairImages.length > 0
+            ? `<button onclick="openRepairImageModal('${encodeURIComponent(JSON.stringify(repairImages))}')" 
+                    class="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white hover:shadow-md transition-all duration-300 flex items-center gap-1.5">
+                🖼️ ดูรูปภาพ <span class="bg-indigo-100 text-indigo-700 px-1.5 rounded-md text-[10px] group-hover:bg-white">${repairImages.length}</span>
+            </button>`
+            : `<span class="text-gray-400 text-xs font-medium px-2.5 py-1 bg-gray-50 rounded-lg border border-gray-100">- ไม่มีรูปภาพ -</span>`;
 
         tbody.innerHTML = repairs.map(r => `
             <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
-                <td class="p-3.5 text-sm text-center">
-                    ${r.image_url 
-                        ? `<a href="${escapeHTML(r.image_url)}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
-                            🖼️ ดูรูปภาพ
-                        </a>`
-                        : `<span class="text-gray-400 text-xs bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">- ไม่มีรูปภาพ -</span>`
-                    }
-                </td>
+                <td class="p-3.5 text-sm text-gray-500">${imageHtml}</td>
                 <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
                 
                 
@@ -3349,6 +3461,40 @@ async function fetchRepairPage() {
                     </button>
                 </td>
             </tr>
+
+            <!-- Modal สำหรับดูรูประบบแจ้งซ่อม -->
+            <div id="repairImageModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4 opacity-0 transition-opacity duration-300">
+                <div class="relative max-w-4xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col transform scale-95 transition-transform duration-300" id="repairModalContent">
+                    
+                    <!-- Header -->
+                    <div class="flex justify-between items-center p-4 border-b border-gray-100 bg-white">
+                        <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                            <span class="p-1.5 bg-indigo-100 rounded-lg text-indigo-600">🔧</span> รูปภาพประกอบการแจ้งซ่อม
+                        </h3>
+                        <button onclick="closeRepairImageModal()" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-rose-100 hover:text-rose-600 transition-colors">
+                            ✖
+                        </button>
+                    </div>
+
+                    <!-- Body / Image Container -->
+                    <div class="relative w-full h-[65vh] bg-gray-50 flex items-center justify-center group overflow-hidden">
+                        <img id="repairModalImg" src="" class="max-w-full max-h-full object-contain drop-shadow-lg transition-all duration-300">
+
+                        <!-- ปุ่มเลื่อนซ้าย-ขวา -->
+                        <button onclick="changeRepairImage(-1)" id="repairPrevBtn" class="absolute left-4 p-3 bg-white/90 backdrop-blur text-gray-800 rounded-full shadow-lg border border-gray-200 hover:bg-indigo-600 hover:text-white transition-all transform -translate-x-10 group-hover:translate-x-0 opacity-0 group-hover:opacity-100">
+                            ❮
+                        </button>
+                        <button onclick="changeRepairImage(1)" id="repairNextBtn" class="absolute right-4 p-3 bg-white/90 backdrop-blur text-gray-800 rounded-full shadow-lg border border-gray-200 hover:bg-indigo-600 hover:text-white transition-all transform translate-x-10 group-hover:translate-x-0 opacity-0 group-hover:opacity-100">
+                            ❯
+                        </button>
+
+                        <!-- ตัวบอกตำแหน่งรูปภาพ -->
+                        <div id="repairImageIndicator" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold tracking-widest shadow-lg">
+                            1 / 1
+                        </div>
+                    </div>
+                </div>
+            </div>
         `).join('');
 
     } catch (error) {
