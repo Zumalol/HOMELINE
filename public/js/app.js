@@ -3309,45 +3309,88 @@ async function fetchRepairPage() {
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-rose-500 font-bold bg-rose-50">❌ ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้</td></tr>`;
     }
 }
-// ฟังก์ชันวาดตาราง
+// ฟังก์ชันสำหรับเรนเดอร์แถวข้อมูลในตาราง
 function renderRepairTable(repairs) {
     const tbody = document.getElementById('repair-table-body');
     if (!tbody) return;
 
-    if (repairs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-gray-400 font-medium">ไม่มีรายการแจ้งซ่อมในระบบ</td></tr>`;
+    if (!repairs || repairs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400 font-medium">ไม่พบรายการแจ้งซ่อม</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = repairs.map(r => {
-        let statusBadge = '';
-        if (r.status === 'Completed') {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">🟢 เสร็จสิ้น</span>`;
-        } else if (r.status === 'In Progress') {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 กำลังซ่อม</span>`;
-        } else {
-            statusBadge = `<span class="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">🔴 รอดำเนินการ</span>`;
-        }
+    tbody.innerHTML = repairs.map(r => `
+        <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+            <td class="p-4 text-sm font-medium text-gray-600">${escapeHTML(r.date || '-')}</td>
+            <td class="p-4 font-black text-gray-800">ห้อง ${escapeHTML(r.room_number || '-')}</td>
+            <td class="p-4 text-sm text-gray-700">${escapeHTML(r.issue|| '-')}</td>
+            
+            <!-- ปุ่มกดดูรูปภาพ -->
+            <td class="p-4">
+                ${r.image_url 
+                    ? `<button onclick="openRepairImageModal('${escapeHTML(r.image_url)}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-600 hover:text-white transition-colors shadow-sm">
+                        📸 ดูรูปภาพ
+                       </button>`
+                    : `<span class="text-gray-300 text-xs font-medium">- ไม่มี -</span>`
+                }
+            </td>
+            
+            <td class="p-4 text-sm text-gray-600">${escapeHTML(r.tenant_name || '-')}</td>
+            
+            <!-- ป้ายสถานะ -->
+            <td class="p-4 text-center">
+                <span class="px-2.5 py-1 rounded-xl text-xs font-bold border ${
+                    r.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                    r.status === 'In Progress' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                    'bg-rose-50 text-rose-600 border-rose-200'
+                }">
+                    ${r.status === 'Completed' ? '🟢 เสร็จสิ้น' : r.status === 'In Progress' ? '🟡 กำลังซ่อม' : '🔴 รอดำเนินการ'}
+                </span>
+            </td>
+            
+            <!-- Dropdown จัดการ (อัปเดตสถานะ หรือ ลบ) -->
+            <td class="p-4 text-center">
+                <select onchange="updateRepairStatus(${r.id}, this.value)" class="bg-white border border-gray-200 text-gray-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm hover:border-indigo-300 transition-all">
+                    <option value="" disabled selected>⚙️ จัดการ</option>
+                    <option value="Pending">🔴 รอดำเนินการ</option>
+                    <option value="In Progress">🟡 กำลังซ่อมแซม</option>
+                    <option value="Completed">🟢 เสร็จสิ้น</option>
+                    <option value="Delete">🗑️ ลบรายการ</option>
+                </select>
+            </td>
+        </tr>
+    `).join('');
+}
 
-        // จัดการวันที่ (สมมติว่า backend ส่งมาเป็น timestamp หรือ date string)
-        const dateObj = new Date(r.created_at || r.date);
-        const dateStr = dateObj.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+// ฟังก์ชันควบคุม Modal รูปภาพ
+function openRepairImageModal(imgSrc) {
+    const modal = document.getElementById('repairImageModal');
+    const img = document.getElementById('modalImagePreview');
+    if (modal && img) {
+        img.src = imgSrc;
+        modal.classList.remove('hidden');
+    }
+}
 
-        return `
-            <tr class="hover:bg-indigo-50/30 transition-colors">
-                <td class="p-4 text-sm">${dateStr}</td>
-                <td class="p-4 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
-                <td class="p-4 text-sm text-gray-600 truncate max-w-xs" title="${escapeHTML(r.issue || r.description)}">${escapeHTML(r.issue || r.description || '-')}</td>
-                <td class="p-4 text-sm">${escapeHTML(r.tenant_name || r.tenant || '-')}</td>
-                <td class="p-4 text-center">${statusBadge}</td>
-                <td class="p-4 text-center">
-                    <button onclick="updateRepairStatus(${r.id})" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors">
-                        อัปเดต
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+function closeRepairImageModal() {
+    const modal = document.getElementById('repairImageModal');
+    const img = document.getElementById('modalImagePreview');
+    if (modal) {
+        modal.classList.add('hidden');
+        if (img) img.src = ''; // เคลียร์รูปภาพเมื่อปิดหน้าต่าง
+    }
+}
+
+// โครงสร้างฟังก์ชันอัปเดตสถานะสำหรับเชื่อมกับ Backend
+async function updateRepairStatus(repairId, newStatus) {
+    if (newStatus === 'Delete') {
+        if (!confirm('ยืนยันที่จะลบรายการแจ้งซ่อมนี้?')) return;
+        // โค้ดยิง API ลบข้อมูล
+        console.log('Deleting repair:', repairId);
+    } else {
+        // โค้ดยิง API เปลี่ยนสถานะ
+        console.log('Updating repair:', repairId, 'to', newStatus);
+    }
 }
 
 // ฟังก์ชันค้นหาและกรองสถานะ

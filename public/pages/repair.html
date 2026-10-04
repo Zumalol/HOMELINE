@@ -24,19 +24,34 @@
                     <th class="p-4 font-bold w-32">วันที่แจ้ง</th>
                     <th class="p-4 font-bold w-24">ห้อง</th>
                     <th class="p-4 font-bold">รายละเอียดปัญหา</th>
+                    <th class="p-4 font-bold w-32">ดูรูปภาพ</th>
                     <th class="p-4 font-bold w-32">ผู้แจ้ง</th>
                     <th class="p-4 font-bold w-32 text-center">สถานะ</th>
                     <th class="p-4 font-bold w-24 text-center">จัดการ</th>
                 </tr>
             </thead>
+            <!-- แทนที่ <tbody> เดิมด้วยโค้ดนี้ เพื่อแก้ปัญหา colspan ให้ครบ 7 ช่อง -->
             <tbody id="repair-table-body" class="text-gray-700 divide-y divide-gray-100">
-                <!-- ข้อมูลจาก API จะถูกนำมาแสดงตรงนี้ -->
                 <tr>
-                    <td colspan="6" class="text-center py-10 text-indigo-400 font-medium animate-pulse">
+                    <td colspan="7" class="text-center py-10 text-indigo-400 font-medium animate-pulse">
                         ⏳ กำลังโหลดข้อมูลแจ้งซ่อม...
                     </td>
                 </tr>
             </tbody>
+
+
         </table>
+    </div>
+</div>
+<!-- เพิ่มโค้ด Modal สำหรับดูรูปภาพ ไว้ต่อจาก </div> ปิดท้ายสุดของไฟล์ -->
+<div id="repairImageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity">
+    <div class="relative bg-white rounded-2xl p-4 max-w-3xl w-full mx-4 shadow-2xl">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-2">
+            <h3 class="text-lg font-black text-gray-800">📸 รูปภาพแจ้งซ่อม</h3>
+            <button onclick="closeRepairImageModal()" class="text-gray-400 hover:text-rose-500 font-bold text-2xl transition-colors">&times;</button>
+        </div>
+        <div class="flex justify-center bg-gray-50 rounded-xl overflow-hidden p-2 border border-gray-100">
+            <img id="modalImagePreview" src="" class="max-h-[70vh] object-contain rounded-lg">
+        </div>
     </div>
 </div>
