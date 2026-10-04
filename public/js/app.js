@@ -3349,6 +3349,79 @@ async function fetchRepairPage() {
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
 }
+
+async function submitRepairForm(event) {
+    if (event) event.preventDefault();
+
+    // ดึงค่าตามฟิลด์ที่กำหนดโดยห้ามเปลี่ยนชื่อตัวแปรเหล่านี้เด็ดขาด
+    const room_number = document.getElementById('repairRoomNumber')?.value.trim();
+    const tenant_name = document.getElementById('repairTenantName')?.value.trim();
+    const issue = document.getElementById('repairIssue')?.value.trim();
+    const imageInput = document.getElementById('repairImage');
+    
+    // created_at จะถูกสร้างอัตโนมัติหรือดึงค่าเวลาปัจจุบัน
+    const created_at = new Date().toISOString(); 
+
+    if (!room_number || !issue) {
+        alert('กรุณากรอกเลขห้องและรายละเอียดการแจ้งซ่อมให้ครบถ้วน');
+        return;
+    }
+
+    let image_url = '';
+    if (imageInput && imageInput.files[0]) {
+        // แปลงรูปภาพเป็น Base64 หรืออัปโหลดตามระบบที่มีอยู่
+        image_url = await fileToBase64(imageInput.files[0]);
+    }
+
+    // จัดเตรียม Payload โดยใช้ชื่อฟิลด์ตามที่กำหนดเป๊ะๆ
+    const payload = {
+        created_at,
+        room_number,
+        issue,
+        image_url,
+        tenant_name
+    };
+
+    try {
+        const res = await fetch('/api/repairs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'ไม่สามารถบันทึกข้อมูลการแจ้งซ่อมได้');
+        }
+
+        // 🟢 แสดงข้อความแจ้งเตือนเมื่อบันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้วตามต้องการ
+        const resultDiv = document.getElementById('repair-result') || document.getElementById('repairResult');
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl font-bold flex items-center gap-2 shadow-sm">
+                    <span>✅</span> บันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้ว
+                </div>
+            `;
+        } else {
+            alert('✅ บันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้ว');
+        }
+
+        // รีเซ็ตฟอร์มหลังบันทึกสำเร็จ
+        if (document.getElementById('repairForm')) {
+            document.getElementById('repairForm').reset();
+        }
+
+        // โหลดรายการแจ้งซ่อมใหม่ (ถ้ามีฟังก์ชัน fetchRepairPage)
+        if (typeof fetchRepairPage === 'function') {
+            await fetchRepairPage();
+        }
+
+    } catch (error) {
+        console.error('Repair Error:', error);
+        alert('❌ เกิดข้อผิดพลาด: ' + error.message);
+    }
+}
 // 2. ฟังก์ชันอัปเดตสถานะเข้าฐานข้อมูล (Neon) ทันทีที่เปลี่ยน Dropdown
 async function updateRepairStatus(id, newStatus) {
     try {
