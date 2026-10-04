@@ -3320,8 +3320,10 @@ async function fetchRepairPage() {
             <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
-                <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.image_url || '-ไม่มีรูปภาพ-')}</td>
+                <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
+                
                 
                 <!-- คอลัมน์สถานะ: เป็น Dropdown ให้กดเปลี่ยนได้ -->
                 <td class="p-3.5">
