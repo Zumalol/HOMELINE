@@ -3292,104 +3292,109 @@ function escapeHTML(value) {
 // REPAIR SYSTEM (ระบบแจ้งซ่อม)
 // =====================================================
 
-/// ฟังก์ชันดึงข้อมูลแจ้งซ่อม
+// 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตาราง
 async function fetchRepairPage() {
-    const tbody = document.getElementById('repair-table-body');
+    const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
     if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
 
     try {
-        // ดึงข้อมูลจาก API (แก้ URL ให้ตรงกับ Backend ของคุณ)
-        const res = await fetch('/api/repairs'); 
+        const res = await fetch('/api/repairs');
         const data = await res.json();
+        
+        // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
+        const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        currentRepairs = Array.isArray(data) ? data : (data.repairs || []);
-        renderRepairTable(currentRepairs);
+        if (repairs.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-8 text-gray-400 font-medium">
+                        ไม่พบรายการแจ้งซ่อม
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = repairs.map(r => `
+            <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+                <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
+                <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
+                
+                <!-- คอลัมน์สถานะ: เป็น Dropdown ให้กดเปลี่ยนได้ -->
+                <td class="p-3.5">
+                    <select onchange="updateRepairStatus(${r.id}, this.value)" 
+                            class="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-1.5 shadow-sm">
+                        <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>รอดำเนินการ</option>
+                        <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>กำลังซ่อม</option>
+                        <option value="completed" ${r.status === 'completed' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
+                    </select>
+                </td>
+                
+                <!-- คอลัมน์จัดการ: มีแค่ปุ่มลบอย่างเดียว -->
+                <td class="p-3.5 text-center">
+                    <button onclick="deleteRepair(${r.id})" class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-sm" title="ลบรายการ">
+                        🗑️ ลบ
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
     } catch (error) {
-        console.error('Error fetching repairs:', error);
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-rose-500 font-bold bg-rose-50">❌ ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้</td></tr>`;
+        console.error('Fetch Repairs Error:', error);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
 }
-// ฟังก์ชันสำหรับเรนเดอร์แถวข้อมูลในตาราง
-function renderRepairTable(repairs) {
-    const tbody = document.getElementById('repair-table-body');
-    if (!tbody) return;
+// 2. ฟังก์ชันอัปเดตสถานะเข้าฐานข้อมูล (Neon) ทันทีที่เปลี่ยน Dropdown
+async function updateRepairStatus(id, newStatus) {
+    try {
+        const res = await fetch(`/api/repairs/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
 
-    if (!repairs || repairs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400 font-medium">ไม่พบรายการแจ้งซ่อม</td></tr>`;
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'ไม่สามารถอัปเดตสถานะได้');
+        }
+        
+        // (ตัวเลือกเสริม) แสดงข้อความแจ้งเตือนเมื่อบันทึกสำเร็จ
+        alert('✅ อัปเดตสถานะการแจ้งซ่อมเรียบร้อยแล้ว');
+        
+    } catch (error) {
+        console.error('Update Repair Status Error:', error);
+        alert('❌ ' + error.message);
+        await fetchRepairPage(); // ดึงข้อมูลใหม่เพื่อรีเซ็ตค่า Dropdown กลับเป็นค่าเดิมหากเกิด Error
+    }
+}
+
+// 3. ฟังก์ชันลบการ์ด/รายการแจ้งซ่อม
+async function deleteRepair(id) {
+    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบรายการแจ้งซ่อมนี้? \n(ไม่สามารถกู้คืนได้)')) {
         return;
     }
 
-    tbody.innerHTML = repairs.map(r => `
-        <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
-            <td class="p-4 text-sm font-medium text-gray-600">${escapeHTML(r.date || '-')}</td>
-            <td class="p-4 font-black text-gray-800">ห้อง ${escapeHTML(r.room_number || '-')}</td>
-            <td class="p-4 text-sm text-gray-700">${escapeHTML(r.issue|| '-')}</td>
-            
-            <!-- ปุ่มกดดูรูปภาพ -->
-            <td class="p-4">
-                ${r.image_url 
-                    ? `<button onclick="openRepairImageModal('${escapeHTML(r.image_url)}')" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg hover:bg-indigo-600 hover:text-white transition-colors shadow-sm">
-                        📸 ดูรูปภาพ
-                       </button>`
-                    : `<span class="text-gray-300 text-xs font-medium">- ไม่มี -</span>`
-                }
-            </td>
-            
-            <td class="p-4 text-sm text-gray-600">${escapeHTML(r.tenant_name || '-')}</td>
-            
-            <!-- ป้ายสถานะ -->
-            <td class="p-4 text-center">
-                <span class="px-2.5 py-1 rounded-xl text-xs font-bold border ${
-                    r.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
-                    r.status === 'In Progress' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-                    'bg-rose-50 text-rose-600 border-rose-200'
-                }">
-                    ${r.status === 'Completed' ? '🟢 เสร็จสิ้น' : r.status === 'In Progress' ? '🟡 กำลังซ่อม' : '🔴 รอดำเนินการ'}
-                </span>
-            </td>
-            
-            <!-- Dropdown จัดการ (อัปเดตสถานะ หรือ ลบ) -->
-            <td class="p-4 text-center">
-                <select onchange="updateRepairStatus(${r.id}, this.value)" class="bg-white border border-gray-200 text-gray-700 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm hover:border-indigo-300 transition-all">
-                    <option value="" disabled selected>⚙️ จัดการ</option>
-                    <option value="Pending">🔴 รอดำเนินการ</option>
-                    <option value="In Progress">🟡 กำลังซ่อมแซม</option>
-                    <option value="Completed">🟢 เสร็จสิ้น</option>
-                    <option value="Delete">🗑️ ลบรายการ</option>
-                </select>
-            </td>
-        </tr>
-    `).join('');
-}
+    try {
+        const res = await fetch(`/api/repairs/${id}`, {
+            method: 'DELETE'
+        });
 
-// ฟังก์ชันควบคุม Modal รูปภาพ
-function openRepairImageModal(imgSrc) {
-    const modal = document.getElementById('repairImageModal');
-    const img = document.getElementById('modalImagePreview');
-    if (modal && img) {
-        img.src = imgSrc;
-        modal.classList.remove('hidden');
-    }
-}
+        const data = await res.json();
 
-function closeRepairImageModal() {
-    const modal = document.getElementById('repairImageModal');
-    const img = document.getElementById('modalImagePreview');
-    if (modal) {
-        modal.classList.add('hidden');
-        if (img) img.src = ''; // เคลียร์รูปภาพเมื่อปิดหน้าต่าง
-    }
-}
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'เกิดข้อผิดพลาดในการลบรายการ');
+        }
 
-// โครงสร้างฟังก์ชันอัปเดตสถานะสำหรับเชื่อมกับ Backend
-async function updateRepairStatus(repairId, newStatus) {
-    if (newStatus === 'Delete') {
-        if (!confirm('ยืนยันที่จะลบรายการแจ้งซ่อมนี้?')) return;
-        // โค้ดยิง API ลบข้อมูล
-        console.log('Deleting repair:', repairId);
-    } else {
-        // โค้ดยิง API เปลี่ยนสถานะ
-        console.log('Updating repair:', repairId, 'to', newStatus);
+        alert('✅ ลบรายการแจ้งซ่อมสำเร็จ');
+        await fetchRepairPage(); // โหลดตารางใหม่หลังลบเสร็จ
+
+    } catch (error) {
+        console.error('Delete Repair Error:', error);
+        alert('❌ ' + error.message);
     }
 }
 
@@ -3437,41 +3442,6 @@ window.viewRepairImage = function(imgSrc) {
         modal.classList.add('opacity-100');
         img.classList.remove('scale-95');
     }, 10);
-};
-
-// 3. ฟังก์ชันอัปเดตสถานะการซ่อมส่งไปให้ Backend
-async function updateRepairStatus(id) {
-    const newStatus = prompt('พิมพ์สถานะที่ต้องการเปลี่ยน:\n(Pending / In Progress / Completed)');
-    if (!newStatus) return;
-    
-    try {
-        const res = await fetch(`/api/repairs/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-        });
-        
-        if(res.ok) {
-            await fetchRepairPage(); // โหลดตารางใหม่หลังอัปเดต
-        }
-    } catch (e) {
-        console.error('Update Repair Error:', e);
-    }
-}
-
-// 4. ฟังก์ชันลบรายการแจ้งซ่อม
-window.deleteRepair = async function(id) {
-    if (!confirm('ยืนยันการลบรายการแจ้งซ่อมนี้ออกจากระบบถาวร?')) return;
-    try {
-        const res = await fetch(`/api/repairs/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-            await fetchRepairPage();
-        } else {
-            alert('❌ ไม่สามารถลบรายการได้');
-        }
-    } catch (e) {
-        console.error('Delete Repair Error:', e);
-    }
 };
 
 
