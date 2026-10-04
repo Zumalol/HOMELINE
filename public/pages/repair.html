@@ -1,18 +1,42 @@
-<div class="bg-white p-6 rounded-xl shadow-sm border w-full">
-    <h3 class="text-lg font-bold mb-4">🛠️ รายการแจ้งซ่อมจากผู้เช่า (ผ่านแอปมือถือ)</h3>
-    
-    <!-- เพิ่ม div ครอบตรงนี้ -->
-    <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse min-w-[600px]">
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <!-- ส่วนหัวและตัวกรอง -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div>
+            <h2 class="text-2xl font-black text-gray-800">🔧 รายการแจ้งซ่อม</h2>
+            <p class="text-sm text-gray-500 mt-1">ติดตามและจัดการรายการแจ้งซ่อมจากผู้เช่า</p>
+        </div>
+        <div class="flex gap-2 w-full sm:w-auto">
+            <select id="repairStatusFilter" onchange="filterRepairs()" class="bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none">
+                <option value="all">สถานะทั้งหมด</option>
+                <option value="Pending">🔴 รอดำเนินการ</option>
+                <option value="In Progress">🟡 กำลังซ่อมแซม</option>
+                <option value="Completed">🟢 เสร็จสิ้น</option>
+            </select>
+            <input type="text" id="searchRepairInput" onkeyup="filterRepairs()" placeholder="ค้นหาเลขห้อง..." class="bg-gray-50 border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none w-full sm:w-64">
+        </div>
+    </div>
+
+    <!-- ตารางแจ้งซ่อม -->
+    <div class="overflow-x-auto rounded-xl border border-gray-100">
+        <table class="w-full text-left border-collapse whitespace-nowrap">
             <thead>
-                <tr class="bg-gray-100 border-b">
-                    <th class="p-3 whitespace-nowrap">ห้อง</th>
-                    <th class="p-3 whitespace-nowrap">ปัญหาที่แจ้ง</th>
-                    <th class="p-3 whitespace-nowrap">สถานะ</th>
-                    <th class="p-3 text-center whitespace-nowrap">จัดการ</th>
+                <tr class="bg-gray-50 text-gray-600 text-sm border-b border-gray-100">
+                    <th class="p-4 font-bold w-32">วันที่แจ้ง</th>
+                    <th class="p-4 font-bold w-24">ห้อง</th>
+                    <th class="p-4 font-bold">รายละเอียดปัญหา</th>
+                    <th class="p-4 font-bold w-32">ผู้แจ้ง</th>
+                    <th class="p-4 font-bold w-32 text-center">สถานะ</th>
+                    <th class="p-4 font-bold w-24 text-center">จัดการ</th>
                 </tr>
             </thead>
-            <tbody id="repair-table-body"></tbody>
+            <tbody id="repair-table-body" class="text-gray-700 divide-y divide-gray-100">
+                <!-- ข้อมูลจาก API จะถูกนำมาแสดงตรงนี้ -->
+                <tr>
+                    <td colspan="6" class="text-center py-10 text-indigo-400 font-medium animate-pulse">
+                        ⏳ กำลังโหลดข้อมูลแจ้งซ่อม...
+                    </td>
+                </tr>
+            </tbody>
         </table>
     </div>
 </div>
