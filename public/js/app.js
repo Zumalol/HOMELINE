@@ -3294,41 +3294,22 @@ function escapeHTML(value) {
 
 // 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตาราง
 async function fetchRepairPage() {
-    const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
-    if (!tbody) return;
-
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
-    
-
-
     try {
-        const res = await fetch('/api/repairs');
+        const res = await fetch('/api/repairs'); // หรือ endpoint แจ้งซ่อมของคุณ
         const data = await res.json();
-        
-        // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
-        const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        let imageUrl = '';
-        if (r.image_url) {
-            try {
-                const parsed = JSON.parse(r.image_url);
-                imageUrl = Array.isArray(parsed) ? parsed[0] : r.image_url;
-            } catch (e) {
-                imageUrl = r.image_url; 
-            }
-         }
-
-        if (repairs.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="text-center py-8 text-gray-400 font-medium">
-                        ไม่พบรายการแจ้งซ่อม
-                    </td>
-                </tr>`;
-            return;
+        // 1. ตรวจสอบสถานะ success จาก API
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้');
         }
 
-        tbody.innerHTML = repairs.map(r => `
+        // 2. ดึง Array ของข้อมูลออกมาจาก key 'repairs' (จุดสำคัญที่ทำให้เกิด Error)
+        const repairList = data.repairs || []; 
+
+        const container = document.getElementById('repair-list-container'); // เปลี่ยนเป็น ID คอนเทนเนอร์จริงของคุณ
+        if (!container) return;
+
+        tbody.innerHTML = repairList.map(r => `
             <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
