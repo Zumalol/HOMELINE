@@ -3294,29 +3294,50 @@ function escapeHTML(value) {
 
 // 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตาราง
 async function fetchRepairPage() {
-    try {
-        const res = await fetch('/api/repairs'); // หรือ endpoint แจ้งซ่อมของคุณ
-        const data = await res.json();
+    const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
+    if (!tbody) return;
 
-        // 1. ตรวจสอบสถานะ success จาก API
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลแจ้งซ่อมได้');
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
+    
+   let repairImageUrl = '';
+
+    if (repair.image) {
+        try {
+            // ลองแปลงค่าที่เป็น String กลับเป็น Array
+            const parsed = JSON.parse(repair.image);
+            // หากแปลงได้และเป็น Array ให้ดึงภาพแรก (index 0) มาใช้
+            repairImageUrl = Array.isArray(parsed) ? parsed[0] : repair.image;
+        } catch (e) {
+            // หากไม่ใช่ JSON ให้ใช้ค่าเดิมตรงๆ
+            repairImageUrl = repair.image;
+        }
+    }
+
+    try {
+        const res = await fetch('/api/repairs');
+        const data = await res.json();
+        
+        // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
+        const repairs = Array.isArray(data) ? data : (data.repairs || []);
+
+        if (repairs.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-8 text-gray-400 font-medium">
+                        ไม่พบรายการแจ้งซ่อม
+                    </td>
+                </tr>`;
+            return;
         }
 
-        // 2. ดึง Array ของข้อมูลออกมาจาก key 'repairs' (จุดสำคัญที่ทำให้เกิด Error)
-        const repairList = data.repairs || []; 
-
-        const container = document.getElementById('repair-list-container'); // เปลี่ยนเป็น ID คอนเทนเนอร์จริงของคุณ
-        if (!container) return;
-
-        tbody.innerHTML = repairList.map(r => `
+        tbody.innerHTML = repairs.map(r => `
             <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
                 <td class="p-3.5 text-sm text-center">
-                    ${r.image_url 
-                        ? `<a href="${imageUrl}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
+                    ${repairImageUrl 
+                        ? `<a href="${escapeHTML(repairImageUrl)}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
                             🖼️ ดูรูปภาพ
                         </a>`
                         : `<span class="text-gray-400 text-xs bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">- ไม่มีรูปภาพ -</span>`
