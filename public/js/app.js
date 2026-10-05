@@ -3321,8 +3321,9 @@ async function fetchRepairPage() {
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
-                <td class="p-4">
-                    ${r.image_url ? `<button onclick="viewRepairImage('${escapeHTML(r.image_url)}')" class="px-3 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">ดูรูปภาพ</button>` : '<span class="text-gray-400 text-sm">ไม่มีรูปภาพ</span>'}
+                <td class="p-3.5 text-sm text-gray-700">
+                    ${renderRepairImages(r.image_data)}
+                </td>
                 <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
                 
                 
@@ -3353,6 +3354,54 @@ async function fetchRepairPage() {
         console.error('Fetch Repairs Error:', error);
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
+}
+
+function renderRepairImages(imageData) {
+    if (!imageData) {
+        return `
+            <div class="w-full h-32 bg-gray-50 rounded-xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 text-xs gap-1">
+                <span>📷</span>
+                <span>ไม่มีรูปภาพแจ้งซ่อม</span>
+            </div>
+        `;
+    }
+
+    let images = [];
+    try {
+        const parsed = JSON.parse(imageData);
+        images = Array.isArray(parsed) ? parsed : [imageData];
+    } catch (e) {
+        images = [imageData];
+    }
+
+    // หากมีรูปเดียว แสดงภาพขนาดปกติแบบกดดูรูปใหญ่ได้
+    if (images.length === 1) {
+        return `
+            <div class="relative w-full h-40 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 group">
+                <img src="${images[0]}" class="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300" onclick="window.open('${images[0]}', '_blank')" alt="รูปแจ้งซ่อม">
+                <div class="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full font-bold pointer-events-none">
+                    1 รูป (คลิกเพื่อดูขยาย)
+                </div>
+            </div>
+        `;
+    }
+
+    // หากมีหลายรูป สร้างแถบเลื่อนแนวนอน (Horizontal Scroll Carousel) โดยไม่แก้โครงสร้างหลัก
+    return `
+        <div class="relative w-full">
+            <div class="flex overflow-x-auto gap-2.5 pb-2 snap-x snap-mandatory scroll-smooth" style="scrollbar-width: thin;">
+                ${images.map((img, idx) => `
+                    <div class="flex-shrink-0 w-36 h-36 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 snap-center relative group shadow-2xs">
+                        <img src="${img}" class="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300" onclick="window.open('${img}', '_blank')" alt="รูปแจ้งซ่อม ${idx + 1}">
+                        <span class="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-md font-bold shadow-sm">
+                            ${idx + 1} /${images.length}
+                        </span>
+                    </div>
+                `).join('')}
+            </div>
+            <p class="text-[11px] text-gray-400 text-right mt-1">💡 เลื่อนขวาเพื่อดูรูปเพิ่มเติม (${images.length} รูป)</p>
+        </div>
+    `;
 }
 // ฟังก์ชันสำหรับแปลงช่องแสดงรูปภาพแจ้งซ่อมให้รองรับการเลื่อนดูหลายรูป
 function enhanceRepairImages() {
