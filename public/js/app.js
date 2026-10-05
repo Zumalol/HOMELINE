@@ -1793,6 +1793,7 @@ async function handleOcrUpload(event) {
     const addressInput = document.getElementById('ocr-address');
     const phoneInput = document.getElementById('ocr-phone');
     const parentPhoneInput = document.getElementById('ocr-parent-phone');
+    const nicknameInput = document.getElementById('ocr-nickname');
 
     // แสดงสถานะกำลังโหลด
     if(nameInput) nameInput.value = 'กำลังประมวลผล...';
@@ -1825,6 +1826,7 @@ async function handleOcrUpload(event) {
             // เบอร์โทรศัพท์ไม่มีในบัตร ให้เว้นว่างไว้ให้ผู้ใช้กรอก
             if(phoneInput) phoneInput.value = '';
             if(parentPhoneInput) parentPhoneInput.value = '';
+            if(nicknameInput) nicknameInput.value = '';
 
             alert('✅ ' + result.message);
 
@@ -1834,6 +1836,7 @@ async function handleOcrUpload(event) {
             if(nameInput) nameInput.value = '';
             if(idInput) idInput.value = '';
             if(addressInput) addressInput.value = '';
+            if(nicknameInput) nicknameInput.value = '';
         }
     };
 
@@ -2692,6 +2695,7 @@ async function saveTenant(e) {
 
     const id = document.getElementById('tenant-id')?.value;
     const name = document.getElementById('ocr-name')?.value.trim();
+    const nickname = document.getElementById('ocr-nickname')?.value.trim();
     const id_card = document.getElementById('ocr-id')?.value.trim();
     const phone = document.getElementById('ocr-phone')?.value.trim();
     const parent_phone = document.getElementById('ocr-parent-phone')?.value.trim();
@@ -3909,8 +3913,6 @@ async function simulateTenantSign(id) {
 // =====================================================
 
 // ตัวแปรสำหรับจัดการสถานะ Gallery รูปภาพ
-// let modalGalleryImages = [];
-// let currentModalImageIndex = 0;
 var modalGalleryImages = [];
 var currentModalImageIndex = 0;
 
