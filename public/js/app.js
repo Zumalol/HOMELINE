@@ -1041,7 +1041,12 @@ function filterDashboardRooms() {
         // กรองสถานะห้อง
         let matchFilter = true;
         if (filterOption !== 'all') {
-            matchFilter = r.status === filterOption;
+            if (filterOption === 'ToBeMoved') {
+                // กรองเฉพาะห้องที่มีการติ๊กเตรียมย้ายออก
+                matchFilter = r.is_moving_out === true;
+            } else {
+                matchFilter = r.status === filterOption;
+            }
         }
 
         // กรองกลุ่มหอพัก
