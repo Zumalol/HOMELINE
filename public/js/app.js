@@ -3302,17 +3302,7 @@ async function fetchRepairPage() {
     try {
         const res = await fetch('/api/repairs');
         const data = await res.json();
-        let repairImage = '';
-        if (r.image_url) { // เปลี่ยน image_url เป็นชื่อคอลัมน์เก็บรูปของคุณ (เช่น image หรือ image_data)
-            try {
-                const parsed = JSON.parse(r.image_url);
-                // ถ้าเป็น Array ให้ดึงรูปแรกสุดออกมา ถ้าไม่ใช่ให้ใช้ค่าเดิม
-                repairImage = Array.isArray(parsed) ? parsed[0] : r.image_url;
-            } catch (e) {
-                repairImage = r.image_url;
-            }
-        }
-        
+
         // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
         const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
@@ -3367,6 +3357,41 @@ async function fetchRepairPage() {
     }
 }
 
+function viewRepairImage(imageData) {
+    if (!imageData) {
+        alert('❌ ไม่พบข้อมูลรูปภาพสำหรับการแจ้งซ่อมนี้');
+        return;
+    }
+
+    let imageUrl = '';
+
+    // ตรวจสอบและดึงที่อยู่รูปภาพให้ปลอดภัย (เหมือนที่ทำในระบบห้องพัก)
+    try {
+        const parsed = JSON.parse(imageData);
+        // ถ้าเป็น Array ให้ดึงรูปแรกมาแสดง หรือถ้าระบบคุณรองรับหลายรูปสามารถปรับเป็น Carousel ได้
+        imageUrl = Array.isArray(parsed) ? parsed[0] : imageData;
+    } catch (e) {
+        // หากไม่ใช่ JSON ให้ใช้ค่า string นั้นได้เลย
+        imageUrl = imageData;
+    }
+
+    if (!imageUrl) {
+        alert('❌ เกิดข้อผิดพลาดในการโหลดข้อมูลรูปภาพ');
+        return;
+    }
+
+    // ตัวอย่างการแสดงรูปภาพโดยการเปิดหน้าต่าง/แท็บใหม่ 
+    // (หากคุณมี UI แบบ Modal สามารถเปลี่ยนไปใช้การกำหนด src ให้แท็ก img ใน Modal แทนได้)
+    const imgWindow = window.open('', '_blank');
+    imgWindow.document.write(`
+        <html style="margin: 0; padding: 0; background-color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+            <head><title>รูปภาพแจ้งซ่อม</title></head>
+            <body style="margin: 0;">
+                <img src="${imageUrl}" style="max-width: 100%; max-height: 100vh; object-fit: contain; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            </body>
+        </html>
+    `);
+}
 async function submitRepairForm(event) {
     if (event) event.preventDefault();
 
