@@ -125,6 +125,9 @@ pool.connect()
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS bill_due_date DATE;
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS fine_per_day NUMERIC DEFAULT 0;
             
+            -- เพิ่มคอลัมน์์ชื่อเล่น
+            ALTER TABLE tenants ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);
+            
             -- เพิ่มคอลัมน์สำหรับเก็บข้อมูล Payload ของบิลเพื่อใช้อัปเดตค่าปรับย้อนหลัง
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS last_bill_data TEXT;
         `);

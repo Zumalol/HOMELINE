@@ -2612,6 +2612,7 @@ async function fetchTenants() {
                         
                         <div class="space-y-3 text-sm text-gray-600 mt-5 mb-6 bg-gray-50/50 rounded-xl p-4 border border-gray-100/50">
                             <p class="flex items-center gap-3"><span class="text-lg opacity-80">🪪</span> <span class="font-mono font-semibold text-gray-700">${escapeHTML(t.id_card || '-')}</span></p>
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">🏷️</span> <span class="font-semibold">${escapeHTML(t.nickname || '-')}</span></p>
                             <p class="flex items-center gap-3"><span class="text-lg opacity-80">📱</span> <span class="font-semibold">${escapeHTML(t.phone || '-')}</span></p>
                             <p class="flex items-center gap-3"><span class="text-lg opacity-80">👨‍👩‍👧</span> <span class="text-gray-400 text-xs w-16">ผู้ปกครอง</span> <span class="font-medium">${escapeHTML(t.parent_phone || '-')}</span></p>
                             <p class="flex items-center gap-3"><span class="text-lg opacity-80">💬</span> <span class="text-gray-400 text-xs w-16">LINE ID</span> <span class="text-emerald-600 font-semibold">${escapeHTML(t.display_name || t.line_id || '-')}</span></p>
