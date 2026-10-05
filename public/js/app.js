@@ -3299,15 +3299,7 @@ async function fetchRepairPage() {
 
     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
     
-    let imageUrl = '';
-    if (r.image_url) {
-        try {
-            const parsed = JSON.parse(r.image_url);
-            imageUrl = Array.isArray(parsed) ? parsed[0] : r.image_url;
-        } catch (e) {
-            imageUrl = r.image_url; 
-        }
-    }
+
 
     try {
         const res = await fetch('/api/repairs');
@@ -3315,6 +3307,16 @@ async function fetchRepairPage() {
         
         // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
         const repairs = Array.isArray(data) ? data : (data.repairs || []);
+
+        let imageUrl = '';
+        if (r.image_url) {
+            try {
+                const parsed = JSON.parse(r.image_url);
+                imageUrl = Array.isArray(parsed) ? parsed[0] : r.image_url;
+            } catch (e) {
+                imageUrl = r.image_url; 
+            }
+         }
 
         if (repairs.length === 0) {
             tbody.innerHTML = `
