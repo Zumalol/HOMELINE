@@ -3298,28 +3298,23 @@ async function fetchRepairPage() {
     if (!tbody) return;
 
     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
-    
-
 
     try {
         const res = await fetch('/api/repairs');
         const data = await res.json();
+        let repairImage = '';
+        if (r.image_url) { // เปลี่ยน image_url เป็นชื่อคอลัมน์เก็บรูปของคุณ (เช่น image หรือ image_data)
+            try {
+                const parsed = JSON.parse(r.image_url);
+                // ถ้าเป็น Array ให้ดึงรูปแรกสุดออกมา ถ้าไม่ใช่ให้ใช้ค่าเดิม
+                repairImage = Array.isArray(parsed) ? parsed[0] : r.image_url;
+            } catch (e) {
+                repairImage = r.image_url;
+            }
+        }
         
         // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
         const repairs = Array.isArray(data) ? data : (data.repairs || []);
-        let repairImageUrl = '';
-
-        if (repair.image) {
-            try {
-                // ลองแปลงค่าที่เป็น String กลับเป็น Array
-                const parsed = JSON.parse(repair.image);
-                // หากแปลงได้และเป็น Array ให้ดึงภาพแรก (index 0) มาใช้
-                repairImageUrl = Array.isArray(parsed) ? parsed[0] : repair.image;
-            } catch (e) {
-                // หากไม่ใช่ JSON ให้ใช้ค่าเดิมตรงๆ
-                repairImageUrl = repair.image;
-            }
-        }
 
         if (repairs.length === 0) {
             tbody.innerHTML = `
@@ -3336,12 +3331,12 @@ async function fetchRepairPage() {
                 <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
-                <td class="p-3.5 text-sm text-center">
-                    ${repairImageUrl 
-                        ? `<a href="${escapeHTML(repairImageUrl)}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
-                            🖼️ ดูรูปภาพ
+                <td class="p-4">
+                    ${repairImage 
+                        ? `<a href="${repairImage}" target="_blank" class="text-indigo-600 hover:underline">
+                            <img src="${repairImage}" class="w-16 h-16 object-cover rounded-lg border">
                         </a>`
-                        : `<span class="text-gray-400 text-xs bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">- ไม่มีรูปภาพ -</span>`
+                        : `<span class="text-gray-400 text-xs">ไม่มีรูป</span>`
                     }
                 </td>
                 <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
