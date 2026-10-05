@@ -414,14 +414,14 @@ pool.query(`
     );
 `).catch(err => console.error('Error creating tenants table:', err));
 
-// ดึงรายชื่อผู้เช่าทั้งหมด
+// ดึงรายชื่อผู้เช่าทั้งหมด (เรียงตาม id จากน้อยไปมาก เพื่อป้องกันการเรียงมั่ว)
 app.get(`${apiPrefix}/tenants`, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT t.*, l.display_name 
             FROM tenants t 
             LEFT JOIN line_friends l ON t.line_id = l.user_id 
-            ORDER BY t.id DESC
+            ORDER BY t.id ASC
         `);
         res.json({ success: true, tenants: result.rows });
     } catch (error) {
@@ -431,7 +431,7 @@ app.get(`${apiPrefix}/tenants`, async (req, res) => {
 
 // เพิ่มผู้เช่าใหม่
 app.post(`${apiPrefix}/tenants`, async (req, res) => {
-    const { name, id_card, phone, parent_phone, line_id, address } = req.body;
+    const { name, nickname, id_card, phone, parent_phone, line_id, address } = req.body;
 
     if (!name || !phone) {
         return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อและเบอร์โทรศัพท์' });
@@ -442,7 +442,7 @@ app.post(`${apiPrefix}/tenants`, async (req, res) => {
             INSERT INTO tenants (name, nickname, id_card, phone, parent_phone, line_id, address)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        `, [name, nickname, id_card, phone, parent_phone, line_id, address]);
+        `, [name, nickname || null, id_card, phone, parent_phone, line_id, address]);
 
         res.status(201).json({ success: true, message: 'เพิ่มผู้เช่าสำเร็จ!', tenant: result.rows[0] });
     } catch (error) {
@@ -450,7 +450,7 @@ app.post(`${apiPrefix}/tenants`, async (req, res) => {
     }
 });
 
-// แก้ไขข้อมูลผู้เช่า
+// แก้ไขข้อมูลผู้เช่า (แก้ไขชื่อเล่น ชื่อ บัตรประชาชน เบอร์โทร ฯลฯ)
 app.put(`${apiPrefix}/tenants/:id`, async (req, res) => {
     const { id } = req.params;
     const { name, nickname, id_card, phone, parent_phone, line_id, address } = req.body;
@@ -458,10 +458,16 @@ app.put(`${apiPrefix}/tenants/:id`, async (req, res) => {
     try {
         const result = await pool.query(`
             UPDATE tenants
-            SET name = $1, nickname = $2, id_card = $3, phone = $4, parent_phone = $5, line_id = $6, address = $7
-            WHERE id = $7
+            SET name = $1, 
+                nickname = $2, 
+                id_card = $3, 
+                phone = $4, 
+                parent_phone = $5, 
+                line_id = $6, 
+                address = $7
+            WHERE id = $8
             RETURNING *
-        `, [name, id_card, phone, parent_phone, line_id, address, id]);
+        `, [name, nickname || null, id_card, phone, parent_phone, line_id, address, id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'ไม่พบผู้เช่าที่ต้องการแก้ไข' });
