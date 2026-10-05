@@ -3298,6 +3298,16 @@ async function fetchRepairPage() {
     if (!tbody) return;
 
     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
+    
+    let imageUrl = '';
+    if (r.image_url) {
+        try {
+            const parsed = JSON.parse(r.image_url);
+            imageUrl = Array.isArray(parsed) ? parsed[0] : r.image_url;
+        } catch (e) {
+            imageUrl = r.image_url; 
+        }
+    }
 
     try {
         const res = await fetch('/api/repairs');
@@ -3323,7 +3333,7 @@ async function fetchRepairPage() {
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
                 <td class="p-3.5 text-sm text-center">
                     ${r.image_url 
-                        ? `<a href="${escapeHTML(r.image_url)}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
+                        ? `<a href="${imageUrl}" target="_blank" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white border border-indigo-100 hover:border-indigo-600 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95">
                             🖼️ ดูรูปภาพ
                         </a>`
                         : `<span class="text-gray-400 text-xs bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-100">- ไม่มีรูปภาพ -</span>`
