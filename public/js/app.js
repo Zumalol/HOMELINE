@@ -3322,13 +3322,7 @@ async function fetchRepairPage() {
                 <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
                 <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
                 <td class="p-4">
-                    ${repairImage 
-                        ? `<a href="${repairImage}" target="_blank" class="text-indigo-600 hover:underline">
-                            <img src="${repairImage}" class="w-16 h-16 object-cover rounded-lg border">
-                        </a>`
-                        : `<span class="text-gray-400 text-xs">ไม่มีรูป</span>`
-                    }
-                </td>
+                    ${r.image_url ? `<button onclick="viewRepairImage('${escapeHTML(r.image_url)}')" class="px-3 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">ดูรูปภาพ</button>` : '<span class="text-gray-400 text-sm">ไม่มีรูปภาพ</span>'}
                 <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
                 
                 
