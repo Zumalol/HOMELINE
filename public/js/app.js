@@ -3344,12 +3344,52 @@ async function fetchRepairPage() {
                 </td>
             </tr>
         `).join('');
+        // ✅ เรียกใช้งานฟังก์ชันปรับปรุงการแสดงผลรูปภาพหลังเรนเดอร์เสร็จ
+        setTimeout(() => {
+            enhanceRepairImages();
+        }, 100);
 
     } catch (error) {
         console.error('Fetch Repairs Error:', error);
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
 }
+// ฟังก์ชันสำหรับแปลงช่องแสดงรูปภาพแจ้งซ่อมให้รองรับการเลื่อนดูหลายรูป
+function enhanceRepairImages() {
+    // ค้นหา Element หรือ Container ที่แสดงรูปภาพในการ์ดแจ้งซ่อม (ปรับ Selector ตามโครงสร้างใน repair.html ของท่าน)
+    const repairCardImages = document.querySelectorAll('.repair-card-image-container, [id*="repair"] img, .repair-img-wrapper');
+
+    repairCardImages.forEach(container => {
+        // ป้องกันการใส่ซ้ำ
+        if (container.dataset.enhanced === 'true') return;
+        container.dataset.enhanced = 'true';
+
+        // สมมติว่าภายใน container มีรูปภาพหลายรูป หรือเราต้องการแปลงให้เป็นแบบเลื่อนแนวนอน
+        const images = container.querySelectorAll('img');
+        if (images.length > 1) {
+            // หุ้มด้วย wrapper ที่รองรับการเลื่อนแนวนอนแบบ Snap
+            container.style.display = 'flex';
+            container.style.overflowX = 'auto';
+            container.style.scrollSnapType = 'x mandatory';
+            container.style.gap = '8px';
+            container.style.scrollbarWidth = 'none'; // ซ่อน Scrollbar บน Firefox
+            
+            // ปรับแต่งรูปภาพแต่ละรูปให้อยู่ในโหมดเลื่อน
+            images.forEach(img => {
+                img.style.flexShrink = '0';
+                img.style.scrollSnapAlign = 'center';
+                img.style.objectFit = 'cover';
+            });
+        }
+    });
+}
+
+// หรือหากต้องการสร้างฟังก์ชันเรนเดอร์รูปภาพแจ้งซ่อมแบบหลายรูป (กรณีสร้าง HTML ใหม่ผ่าน JS)
+imagesHTML = imagesArray.length > 1 
+    ? `<div class="flex overflow-x-auto gap-2 snap-x snap-mandatory scroll-smooth pb-2" style="scrollbar-width: none;">
+         ${imagesArray.map(img => `<img src="${img}" class="w-32 h-32 object-cover rounded-xl flex-shrink-0 snap-center border">`).join('')}
+       </div>`
+    : `<img src="${imagesArray[0]}" class="w-full h-48 object-cover rounded-xl">`;
 
 function viewRepairImage(imageData) {
     if (!imageData) {
