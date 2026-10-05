@@ -2670,6 +2670,7 @@ async function openTenantModal(id = null) {
             modalTitle.innerText = '✏️ แก้ไขข้อมูลผู้เช่า';
             document.getElementById('tenant-id').value = tenant.id;
             document.getElementById('ocr-name').value = tenant.name || '';
+            document.getElementById('ocr-nickname').value = tenant.nickname || '';
             document.getElementById('ocr-id').value = tenant.id_card || '';
             document.getElementById('ocr-phone').value = tenant.phone || '';
             document.getElementById('ocr-parent-phone').value = tenant.parent_phone || '';
