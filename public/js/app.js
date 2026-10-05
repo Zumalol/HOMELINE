@@ -3387,7 +3387,7 @@ function renderRepairTable(repairs) {
                 <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(r.created_at || r.date || '-')}</td>
                 <td class="p-4 font-bold text-gray-800 whitespace-nowrap">ห้อง ${escapeHTML(r.room_number || r.room || '-')}</td>
                 <td class="p-4 text-sm text-gray-700 max-w-xs truncate" title="${escapeHTML(r.description || r.issue || '')}">${escapeHTML(r.description || r.issue || '-')}</td>
-                <td class="p-4 whitespace-nowrap">${imagesHtml}</td>
+                
                 <td class="p-4 text-sm text-gray-600">${escapeHTML(r.tenant_name || r.tenant || '-')}</td>
                 <td class="p-4 whitespace-nowrap">${statusBadge}</td>
                 <td class="p-4 text-center whitespace-nowrap space-x-1">
