@@ -3292,167 +3292,100 @@ function escapeHTML(value) {
 // REPAIR SYSTEM (ระบบแจ้งซ่อม)
 // =====================================================
 
-let currentRepairData = [];
-
+// 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตาราง
 async function fetchRepairPage() {
-    const tbody = document.getElementById('repair-table-body');
+    const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
     if (!tbody) return;
 
-    tbody.innerHTML = `
-        <tr id="repair-loading-row">
-            <td colspan="7" class="text-center py-12 text-indigo-400 font-medium animate-pulse">
-                ⏳ กำลังโหลดรายการแจ้งซ่อม...
-            </td>
-        </tr>
-    `;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
 
     try {
         const res = await fetch('/api/repairs');
         const data = await res.json();
 
-        // รองรับข้อมูลทั้งแบบ Array ตรง หรืออยู่ใน Object
-        currentRepairData = Array.isArray(data) ? data : (data.repairs || data.data || []);
+        // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
+        const repairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        renderRepairTable(currentRepairData);
-        updateRepairStatus(currentRepairData);
-    } catch (error) {
-        console.error('Error fetching repairs:', error);
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">
-                    ❌ ไม่สามารถโหลดข้อมูลรายการแจ้งซ่อมได้
+        if (repairs.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-8 text-gray-400 font-medium">
+                        ไม่พบรายการแจ้งซ่อม
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        tbody.innerHTML = repairs.map(r => `
+            <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+                <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
+                <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
+                <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
+                <td class="p-4">
+                    ${r.image_url ? `<button onclick="viewRepairImage('${escapeHTML(r.image_url)}')" class="px-3 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">ดูรูปภาพ</button>` : '<span class="text-gray-400 text-sm">ไม่มีรูปภาพ</span>'}
+                <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
+                
+                
+                <!-- คอลัมน์สถานะ: เป็น Dropdown ให้กดเปลี่ยนได้ -->
+                <td class="p-3.5">
+                    <select onchange="updateRepairStatus(${r.id}, this.value)" 
+                            class="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-1.5 shadow-sm">
+                        <option value="รอดำเนินการ" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
+                        <option value="กำลังซ่อม" ${r.status === 'กำลังซ่อม' ? 'selected' : ''}>กำลังซ่อม</option>
+                        <option value="เสร็จสิ้นแล้ว" ${r.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
+                    </select>
+                </td>
+                
+                <!-- คอลัมน์จัดการ: มีแค่ปุ่มลบอย่างเดียว -->
+                <td class="p-3.5 text-center">
+                    <button onclick="deleteRepair(${r.id})" class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-sm" title="ลบรายการ">
+                        🗑️ ลบ
+                    </button>
                 </td>
             </tr>
-        `;
+        `).join('');
+
+    } catch (error) {
+        console.error('Fetch Repairs Error:', error);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
 }
 
-function renderRepairTable(repairs) {
-    const tbody = document.getElementById('repair-table-body');
-    if (!tbody) return;
-
-    if (repairs.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center py-12 text-gray-400 font-bold">
-                    📭 ไม่พบรายการแจ้งซ่อมในระบบ
-                </td>
-            </tr>
-        `;
+function viewRepairImage(imageData) {
+    if (!imageData) {
+        alert('❌ ไม่พบข้อมูลรูปภาพสำหรับการแจ้งซ่อมนี้');
         return;
     }
 
-    tbody.innerHTML = repairs.map(r => {
-        // จัดการรูปภาพหลายรูป (รองรับทั้ง JSON string array และ string เดี่ยว)
-        let images = [];
-        if (r.image_data || r.images) {
-            const rawImg = r.image_data || r.images;
-            try {
-                const parsed = JSON.parse(rawImg);
-                images = Array.isArray(parsed) ? parsed : [rawImg];
-            } catch (e) {
-                images = [rawImg];
-            }
-        }
+    let imageUrl = '';
 
-        // สร้าง HTML สำหรับแสดงรูปภาพหลายรูปแบบเลื่อนแนวนอน
-        let imagesHtml = `<span class="text-xs text-gray-400">- ไม่มีรูป -</span>`;
-        if (images.length > 0) {
-            const thumbs = images.map((imgUrl, imgIndex) => `
-                <div onclick="openRepairImageModal('${escapeHTML(imgUrl)}', ${imgIndex}, ${r.id})" class="relative flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-gray-200 cursor-pointer hover:opacity-85 hover:border-indigo-400 transition-all shadow-2xs group">
-                    <img src="${imgUrl}" class="w-full h-full object-cover group-hover:scale-105 transition-transform">
-                </div>
-            `).join('');
+    // ตรวจสอบและดึงที่อยู่รูปภาพให้ปลอดภัย (เหมือนที่ทำในระบบห้องพัก)
+    try {
+        const parsed = JSON.parse(imageData);
+        // ถ้าเป็น Array ให้ดึงรูปแรกมาแสดง หรือถ้าระบบคุณรองรับหลายรูปสามารถปรับเป็น Carousel ได้
+        imageUrl = Array.isArray(parsed) ? parsed[0] : imageData;
+    } catch (e) {
+        // หากไม่ใช่ JSON ให้ใช้ค่า string นั้นได้เลย
+        imageUrl = imageData;
+    }
 
-            imagesHtml = `
-                <div class="flex items-center gap-1.5 overflow-x-auto max-w-[180px] py-1 hide-scrollbar" style="scrollbar-width: none; -ms-overflow-style: none;">
-                    ${thumbs}
-                </div>
-                ${images.length > 1 ? `<span class="text-[10px] text-indigo-600 font-bold mt-0.5 block">📷 ${images.length} รูป (เลื่อนดูได้)</span>` : ''}
-            `;
-        }
+    if (!imageUrl) {
+        alert('❌ เกิดข้อผิดพลาดในการโหลดข้อมูลรูปภาพ');
+        return;
+    }
 
-        // ป้ายสถานะแจ้งซ่อม
-        let statusBadge = '';
-        if (r.status === 'completed') {
-            statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">✅ ซ่อมเสร็จสิ้น</span>`;
-        } else if (r.status === 'progress') {
-            statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">🟡 กำลังซ่อม</span>`;
-        } else {
-            statusBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">🔴 รอดำเนินการ</span>`;
-        }
-
-        return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50/80 transition-colors">
-                <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(r.created_at || r.date || '-')}</td>
-                <td class="p-4 font-bold text-gray-800 whitespace-nowrap">ห้อง ${escapeHTML(r.room_number || r.room || '-')}</td>
-                <td class="p-4 text-sm text-gray-700 max-w-xs truncate" title="${escapeHTML(r.description || r.issue || '')}">${escapeHTML(r.description || r.issue || '-')}</td>
-                
-                <td class="p-4 text-sm text-gray-600">${escapeHTML(r.tenant_name || r.tenant || '-')}</td>
-                <td class="p-4 whitespace-nowrap">${statusBadge}</td>
-                <td class="p-4 text-center whitespace-nowrap space-x-1">
-                    <button onclick="updateRepairStatus(${r.id})" class="px-2.5 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition-colors" title="เปลี่ยนสถานะ">⚙️ จัดการ</button>
-                    <button onclick="deleteRepair(${r.id})" class="px-2.5 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold transition-colors" title="ลบรายการ">🗑️</button>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    // ตัวอย่างการแสดงรูปภาพโดยการเปิดหน้าต่าง/แท็บใหม่ 
+    // (หากคุณมี UI แบบ Modal สามารถเปลี่ยนไปใช้การกำหนด src ให้แท็ก img ใน Modal แทนได้)
+    const imgWindow = window.open('', '_blank');
+    imgWindow.document.write(`
+        <html style="margin: 0; padding: 0; background-color: #333; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+            <head><title>รูปภาพแจ้งซ่อม</title></head>
+            <body style="margin: 0;">
+                <img src="${imageUrl}" style="max-width: 100%; max-height: 100vh; object-fit: contain; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+            </body>
+        </html>
+    `);
 }
-
-// ฟังก์ชัน Modal เด้งรูปภาพขยายใหญ่ (สไตล์หน้า Room) พร้อมรองรับเลือกดูรูปอื่นๆ ในชุดเดียวกัน
-function openRepairImageModal(imgUrl, index, repairId) {
-    let modal = document.getElementById('repairImageModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'repairImageModal';
-        modal.className = 'fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in hidden';
-        modal.innerHTML = `
-            <div class="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center">
-                <button onclick="closeRepairImageModal()" class="absolute -top-12 right-0 text-white bg-white/20 hover:bg-white/40 rounded-full px-4 py-2 transition-colors text-sm font-bold flex items-center gap-1 shadow-md">
-                    ✕ ปิดหน้าต่าง
-                </button>
-                <div class="bg-black rounded-2xl overflow-hidden max-w-full max-h-[75vh] flex items-center justify-center border border-white/10 shadow-2xl">
-                    <img id="repairModalImg" src="" class="max-w-full max-h-[75vh] object-contain">
-                </div>
-                <div id="repairModalThumbnails" class="flex gap-2 mt-4 overflow-x-auto max-w-full py-2"></div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    }
-
-    // ค้นหาข้อมูลรายการแจ้งซ่อมเพื่อดึงรูปภาพทั้งหมดมาแสดงเป็น Thumbnail ด้านล่าง
-    const repair = currentRepairData.find(r => Number(r.id) === Number(repairId));
-    let allImages = [imgUrl];
-    if (repair && (repair.image_data || repair.images)) {
-        try {
-            const parsed = JSON.parse(repair.image_data || repair.images);
-            if (Array.isArray(parsed)) allImages = parsed;
-        } catch (e) {}
-    }
-
-    // ตั้งค่ารูปภาพหลัก
-    document.getElementById('repairModalImg').src = imgUrl;
-
-    // สร้างกล่องเลือกรูปขนาดย่อ (Thumbnails)
-    const thumbContainer = document.getElementById('repairModalThumbnails');
-    if (thumbContainer) {
-        thumbContainer.innerHTML = allImages.map((url) => `
-            <img src="${url}" onclick="document.getElementById('repairModalImg').src='${url}'" class="w-16 h-16 object-cover rounded-xl cursor-pointer border-2 ${url === imgUrl ? 'border-indigo-500 scale-105' : 'border-transparent opacity-60 hover:opacity-100'} transition-all shadow-md">
-        `).join('');
-    }
-
-    modal.classList.remove('hidden');
-}
-
-function closeRepairImageModal() {
-    const modal = document.getElementById('repairImageModal');
-    if (modal) {
-        modal.classList.add('hidden');
-    }
-}
-
-
-
 async function submitRepairForm(event) {
     if (event) event.preventDefault();
 
