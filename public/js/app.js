@@ -2708,7 +2708,7 @@ async function saveTenant(e) {
         return alert('กรุณากรอกชื่อ-นามสกุลผู้เช่า');
     }
 
-    const payload = { name, id_card, phone, parent_phone, line_id, address };
+    const payload = { name, nickname, id_card, phone, parent_phone, line_id, address };
 
     try {
         const url = id ? `/api/tenants/${id}` : '/api/tenants';
