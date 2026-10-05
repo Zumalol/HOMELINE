@@ -3357,23 +3357,33 @@ function viewRepairImage(imageData) {
         return;
     }
 
-    let imageUrl = '';
-
-    // ตรวจสอบและดึงที่อยู่รูปภาพให้ปลอดภัย (เหมือนที่ทำในระบบห้องพัก)
-    try {
-        const parsed = JSON.parse(imageData);
-        // ถ้าเป็น Array ให้ดึงรูปแรกมาแสดง หรือถ้าระบบคุณรองรับหลายรูปสามารถปรับเป็น Carousel ได้
-        imageUrl = Array.isArray(parsed) ? parsed[0] : imageData;
-    } catch (e) {
-        // หากไม่ใช่ JSON ให้ใช้ค่า string นั้นได้เลย
-        imageUrl = imageData;
+    let repairImages = [];
+    if (r.image_data) {
+        try {
+            const parsed = JSON.parse(r.image_data);
+            repairImages = Array.isArray(parsed) ? parsed : [r.image_data];
+        } catch (e) {
+            repairImages = [r.image_data];
+        }
     }
 
-    if (!imageUrl) {
-        alert('❌ เกิดข้อผิดพลาดในการโหลดข้อมูลรูปภาพ');
-        return;
+    let imagesHtml = '';
+    if (repairImages.length > 0) {
+        imagesHtml = `
+            <div class="flex overflow-x-auto gap-2 max-w-xs pb-2 snap-x scroll-smooth hide-scrollbar" style="scrollbar-width: none; -ms-overflow-style: none;">
+                ${repairImages.map((imgUrl, idx) => `
+                    <a href="${imgUrl}" target="_blank" class="flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:opacity-90 transition-all relative group cursor-pointer" title="คลิกเพื่อดูรูปใหญ่">
+                        <img src="${imgUrl}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        <span class="absolute bottom-0.5 right-0.5 bg-black/60 backdrop-blur-xs text-white text-[9px] px-1 rounded-md font-bold">
+                            ${idx + 1}/${repairImages.length}
+                        </span>
+                    </a>
+                `).join('')}
+            </div>
+        `;
+    } else {
+        imagesHtml = `<span class="text-gray-400 text-xs font-medium">- ไม่มีรูปภาพ -</span>`;
     }
-
     // ตัวอย่างการแสดงรูปภาพโดยการเปิดหน้าต่าง/แท็บใหม่ 
     // (หากคุณมี UI แบบ Modal สามารถเปลี่ยนไปใช้การกำหนด src ให้แท็ก img ใน Modal แทนได้)
     const imgWindow = window.open('', '_blank');
