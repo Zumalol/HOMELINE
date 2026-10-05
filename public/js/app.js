@@ -3299,19 +3299,7 @@ async function fetchRepairPage() {
 
     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
     
-   let repairImageUrl = '';
 
-    if (repair.image) {
-        try {
-            // ลองแปลงค่าที่เป็น String กลับเป็น Array
-            const parsed = JSON.parse(repair.image);
-            // หากแปลงได้และเป็น Array ให้ดึงภาพแรก (index 0) มาใช้
-            repairImageUrl = Array.isArray(parsed) ? parsed[0] : repair.image;
-        } catch (e) {
-            // หากไม่ใช่ JSON ให้ใช้ค่าเดิมตรงๆ
-            repairImageUrl = repair.image;
-        }
-    }
 
     try {
         const res = await fetch('/api/repairs');
@@ -3319,6 +3307,19 @@ async function fetchRepairPage() {
         
         // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
         const repairs = Array.isArray(data) ? data : (data.repairs || []);
+        let repairImageUrl = '';
+
+        if (repair.image) {
+            try {
+                // ลองแปลงค่าที่เป็น String กลับเป็น Array
+                const parsed = JSON.parse(repair.image);
+                // หากแปลงได้และเป็น Array ให้ดึงภาพแรก (index 0) มาใช้
+                repairImageUrl = Array.isArray(parsed) ? parsed[0] : repair.image;
+            } catch (e) {
+                // หากไม่ใช่ JSON ให้ใช้ค่าเดิมตรงๆ
+                repairImageUrl = repair.image;
+            }
+        }
 
         if (repairs.length === 0) {
             tbody.innerHTML = `
