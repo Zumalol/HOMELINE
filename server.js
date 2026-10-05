@@ -124,7 +124,7 @@ pool.connect()
             -- เพิ่มคอลัมน์สำหรับเก็บวันกำหนดชำระและค่าปรับต่อวันในตาราง rooms
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS bill_due_date DATE;
             ALTER TABLE rooms ADD COLUMN IF NOT EXISTS fine_per_day NUMERIC DEFAULT 0;
-            
+
             -- เพิ่มคอลัมน์์ชื่อเล่น
             ALTER TABLE tenants ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);
             
@@ -404,6 +404,7 @@ pool.query(`
     CREATE TABLE IF NOT EXISTS tenants (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        nickname VARCHAR(100),
         id_card VARCHAR(50),
         phone VARCHAR(50),
         parent_phone VARCHAR(50),
@@ -438,10 +439,10 @@ app.post(`${apiPrefix}/tenants`, async (req, res) => {
 
     try {
         const result = await pool.query(`
-            INSERT INTO tenants (name, id_card, phone, parent_phone, line_id, address)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO tenants (name, nickname, id_card, phone, parent_phone, line_id, address)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        `, [name, id_card, phone, parent_phone, line_id, address]);
+        `, [name, nickname, id_card, phone, parent_phone, line_id, address]);
 
         res.status(201).json({ success: true, message: 'เพิ่มผู้เช่าสำเร็จ!', tenant: result.rows[0] });
     } catch (error) {
@@ -452,12 +453,12 @@ app.post(`${apiPrefix}/tenants`, async (req, res) => {
 // แก้ไขข้อมูลผู้เช่า
 app.put(`${apiPrefix}/tenants/:id`, async (req, res) => {
     const { id } = req.params;
-    const { name, id_card, phone, parent_phone, line_id, address } = req.body;
+    const { name, nickname, id_card, phone, parent_phone, line_id, address } = req.body;
 
     try {
         const result = await pool.query(`
             UPDATE tenants
-            SET name = $1, id_card = $2, phone = $3, parent_phone = $4, line_id = $5, address = $6
+            SET name = $1, nickname = $2, id_card = $3, phone = $4, parent_phone = $5, line_id = $6, address = $7
             WHERE id = $7
             RETURNING *
         `, [name, id_card, phone, parent_phone, line_id, address, id]);
