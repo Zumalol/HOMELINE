@@ -370,16 +370,55 @@ app.get('/api/repairs', async (req, res) => {
     }
 });
 
-// อัปเดตสถานะการแจ้งซ่อม
-app.put('/api/repairs/:id/status', async (req, res) => {
-    const { status } = req.body;
+app.post('/api/repairs', async (req, res) => {
     try {
-        await pool.query('UPDATE repairs SET status = $1 WHERE id = $2', [status, req.params.id]);
-        res.json({ success: true, message: 'อัปเดตสถานะเรียบร้อยแล้ว' });
+        let { room_id, tenant_id, title, description, category } = req.body;
+
+        // 🛡️ ป้องกันบัตร [object Object] โดยดึงค่า .id ออกมาถ้าเป็น Object
+        const cleanRoomId = typeof room_id === 'object' && room_id !== null ? room_id.id : room_id;
+        const cleanTenantId = typeof tenant_id === 'object' && tenant_id !== null ? tenant_id.id : tenant_id;
+
+        const parsedRoomId = parseInt(cleanRoomId, 10);
+        const parsedTenantId = tenant_id ? parseInt(cleanTenantId, 10) : null;
+
+        if (isNaN(parsedRoomId)) {
+            return res.status(400).json({ success: false, message: 'Room ID ไม่ถูกต้อง (ต้องเป็นตัวเลข)' });
+        }
+
+        const query = `
+            INSERT INTO repairs (room_id, tenant_id, title, description, category, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, 'Pending', NOW())
+            RETURNING *;
+        `;
+        const values = [parsedRoomId, parsedTenantId, title, description, category || 'ทั่วไป'];
+        const result = await pool.query(query, values);
+
+        res.json({ success: true, message: 'บันทึกแจ้งซ่อมสำเร็จ', repair: result.rows[0] });
     } catch (error) {
+        console.error('Create Repair Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
+
+// อัปเดตสถานะการแจ้งซ่อม
+app.put('/api/repairs/:id/status', async (req, res) => {
+    try {
+        const repairId = parseInt(req.params.id, 10);
+        const { status } = req.body;
+
+        const query = `UPDATE repairs SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *;`;
+        const result = await pool.query(query, [status, repairId]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบรายการแจ้งซ่อมนี้' });
+        }
+
+        res.json({ success: true, message: 'อัปเดตสถานะสำเร็จ', repair: result.rows[0] });
+    } catch (error) {
+        console.error('Update Repair Status Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+})
 
 // ลบรายการแจ้งซ่อม
 app.delete('/api/repairs/:id', async (req, res) => {
