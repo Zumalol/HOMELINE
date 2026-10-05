@@ -3356,52 +3356,80 @@ async function fetchRepairPage() {
     }
 }
 
-function renderRepairImages(imageData) {
-    if (!imageData) {
-        return `
-            <div class="w-full h-32 bg-gray-50 rounded-xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 text-xs gap-1">
-                <span>📷</span>
-                <span>ไม่มีรูปภาพแจ้งซ่อม</span>
-            </div>
-        `;
-    }
+function renderRepairImages(images) {
+    if (!images) return '';
 
-    let images = [];
+    // รองรับทั้งกรณีเป็น String เดี่ยว, JSON Array หรือ Array ปกติ
+    let imgArray = [];
     try {
-        const parsed = JSON.parse(imageData);
-        images = Array.isArray(parsed) ? parsed : [imageData];
+        imgArray = typeof images === 'string' ? JSON.parse(images) : images;
+        if (!Array.isArray(imgArray)) imgArray = [images];
     } catch (e) {
-        images = [imageData];
+        imgArray = [images];
     }
 
-    // หากมีรูปเดียว แสดงภาพขนาดปกติแบบกดดูรูปใหญ่ได้
-    if (images.length === 1) {
-        return `
-            <div class="relative w-full h-40 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 group">
-                <img src="${images[0]}" class="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300" onclick="window.open('${images[0]}', '_blank')" alt="รูปแจ้งซ่อม">
-                <div class="absolute bottom-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full font-bold pointer-events-none">
-                    1 รูป (คลิกเพื่อดูขยาย)
+    if (imgArray.length === 0) return '<span class="text-gray-400 text-xs">- ไม่มีรูปภาพ -</span>';
+
+    return `
+        <div class="flex flex-wrap gap-2">
+            ${imgArray.map(imgUrl => `
+                <div onclick="openImagePopup('${escapeHTML(imgUrl)}')" class="w-16 h-16 rounded-xl overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90 hover:scale-105 transition-all shadow-sm relative group">
+                    <img src="${escapeHTML(imgUrl)}" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs">
+                        🔍
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openImagePopup(imgUrl) {
+    let modal = document.getElementById('repairImagePopupModal');
+    
+    // หากยังไม่มี Modal ใน DOM ให้สร้างขึ้นมาใหม่อัตโนมัติ
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'repairImagePopupModal';
+        modal.className = 'fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden';
+        modal.innerHTML = `
+            <div class="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-scaleIn">
+                <div class="flex justify-between items-center px-5 py-3 bg-gray-900 text-white">
+                    <span class="text-sm font-bold flex items-center gap-2">🖼️ รูปภาพหลักฐานการแจ้งซ่อม</span>
+                    <button onclick="closeImagePopup()" class="text-gray-400 hover:text-white text-2xl font-bold px-2 transition-colors">&times;</button>
+                </div>
+                <div class="p-3 overflow-auto flex items-center justify-center bg-black/90">
+                    <img id="popupRepairImage" src="" class="max-h-[75vh] max-w-full object-contain rounded-lg shadow-md">
+                </div>
+                <div class="p-3 bg-gray-50 flex justify-end">
+                    <button onclick="closeImagePopup()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold rounded-xl transition-colors">
+                        ปิดหน้าต่าง
+                    </button>
                 </div>
             </div>
         `;
+        document.body.appendChild(modal);
+
+        // คลิกพื้นที่ว่างรอบรูปเพื่อปิด Modal
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeImagePopup();
+            }
+        });
     }
 
-    // หากมีหลายรูป สร้างแถบเลื่อนแนวนอน (Horizontal Scroll Carousel) โดยไม่แก้โครงสร้างหลัก
-    return `
-        <div class="relative w-full">
-            <div class="flex overflow-x-auto gap-2.5 pb-2 snap-x snap-mandatory scroll-smooth" style="scrollbar-width: thin;">
-                ${images.map((img, idx) => `
-                    <div class="flex-shrink-0 w-36 h-36 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 snap-center relative group shadow-2xs">
-                        <img src="${img}" class="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-300" onclick="window.open('${img}', '_blank')" alt="รูปแจ้งซ่อม ${idx + 1}">
-                        <span class="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-md font-bold shadow-sm">
-                            ${idx + 1} /${images.length}
-                        </span>
-                    </div>
-                `).join('')}
-            </div>
-            <p class="text-[11px] text-gray-400 text-right mt-1">💡 เลื่อนขวาเพื่อดูรูปเพิ่มเติม (${images.length} รูป)</p>
-        </div>
-    `;
+    const imgElement = document.getElementById('popupRepairImage');
+    if (imgElement) {
+        imgElement.src = imgUrl;
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeImagePopup() {
+    const modal = document.getElementById('repairImagePopupModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
 }
 // ฟังก์ชันสำหรับแปลงช่องแสดงรูปภาพแจ้งซ่อมให้รองรับการเลื่อนดูหลายรูป
 function enhanceRepairImages() {
