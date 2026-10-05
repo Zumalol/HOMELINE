@@ -28,7 +28,7 @@ async function loadComponent(elementId, filePath) {
 // =====================================================
 
 let currentCards = [];
-
+let currentRepairs = [];
 
 // =====================================================
 // PAGE START
@@ -4217,3 +4217,6 @@ window.fetchTenants = fetchTenants;
 window.fetchExportedBills = fetchExportedBills;
 window.previewRoomImage = previewRoomImage;
 window.removeRoomImage = removeRoomImage;
+window.filterRepairList = filterRepairList;
+window.fetchRepairPage = fetchRepairPage;
+window.updateRepairStatus = updateRepairStatus;
