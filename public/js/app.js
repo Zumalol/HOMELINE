@@ -3311,7 +3311,7 @@ async function fetchRepairPage() {
 
         // 1. คำนวณนับจำนวนตามสถานะต่างๆ
         const pendingCount = currentRepairs.filter(r => r.status === 'รอดำเนินการ').length;
-        const progressCount = currentRepairs.filter(r => r.status === 'กำลังซ่อมแซม').length;
+        const progressCount = currentRepairs.filter(r => r.status === 'กำลังซ่อม').length;
         
         // กรองรายการที่เสร็จสิ้นเฉพาะภายในเดือนปัจจุบัน
         const now = new Date();
@@ -3319,7 +3319,7 @@ async function fetchRepairPage() {
         const currentYear = now.getFullYear();
 
         const completedThisMonthCount = currentRepairs.filter(r => {
-            if (r.status !== 'ซ่อมเสร็จสิ้น') return false;
+            if (r.status !== 'เสร็จสิ้นแล้ว') return false;
             if (!r.created_at && !r.updated_at) return true; // กรณีไม่มีฟิลด์วันที่ ให้ถือว่านับร่วมด้วย
             const repairDate = new Date(r.updated_at || r.created_at);
             return repairDate.getMonth() === currentMonth && repairDate.getFullYear() === currentYear;
@@ -3422,7 +3422,7 @@ function renderRepairTable(repairs) {
         let statusBadge = '';
         if (item.status === 'รอดำเนินการ') {
             statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-700 border border-rose-200">🔴 รอดำเนินการ</span>`;
-        } else if (item.status === 'กำลังซ่อมแซม') {
+        } else if (item.status === 'กำลังซ่อม') {
             statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-700 border border-amber-200">🟡 กำลังซ่อมแซม</span>`;
         } else {
             statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ ซ่อมเสร็จสิ้น</span>`;
@@ -3443,8 +3443,8 @@ function renderRepairTable(repairs) {
                 <td class="p-4 text-center">
                     <select onchange="updateRepairStatus(${item.id}, this.value)" class="text-xs p-2 rounded-xl border border-gray-200 bg-white font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
                         <option value="รอดำเนินการ" ${item.status === 'รอดำเนินการ' ? 'selected' : ''}>🔴 รอดำเนินการ</option>
-                        <option value="กำลังซ่อมแซม" ${item.status === 'กำลังซ่อมแซม' ? 'selected' : ''}>🟡 กำลังซ่อมแซม</option>
-                        <option value="ซ่อมเสร็จสิ้น" ${item.status === 'ซ่อมเสร็จสิ้น' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
+                        <option value="กำลังซ่อม" ${item.status === 'กำลังซ่อม' ? 'selected' : ''}>🟡 กำลังซ่อมแซม</option>
+                        <option value="เสร็จสิ้นแล้ว" ${item.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
                     </select>
                 </td>
             </tr>
