@@ -3296,6 +3296,54 @@ function escapeHTML(value) {
 async function fetchRepairPage() {
     const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
     if (!tbody) return;
+    const tableBody = document.getElementById('repair-table-body');
+    const pendingCountEl = document.getElementById('repair-pending-count');
+    const progressCountEl = document.getElementById('repair-progress-count');
+    const completedCountEl = document.getElementById('repair-completed-count');
+
+    try {
+        const res = await fetch('/api/repairs'); // เรียกใช้งาน API ดึงข้อมูลรายการแจ้งซ่อม
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
+
+        currentRepairs = Array.isArray(data) ? data : (data.repairs || []);
+
+        // 1. คำนวณนับจำนวนตามสถานะต่างๆ
+        const pendingCount = currentRepairs.filter(r => r.status === 'รอดำเนินการ').length;
+        const progressCount = currentRepairs.filter(r => r.status === 'กำลังซ่อมแซม').length;
+        
+        // กรองรายการที่เสร็จสิ้นเฉพาะภายในเดือนปัจจุบัน
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const completedThisMonthCount = currentRepairs.filter(r => {
+            if (r.status !== 'ซ่อมเสร็จสิ้น') return false;
+            if (!r.created_at && !r.updated_at) return true; // กรณีไม่มีฟิลด์วันที่ ให้ถือว่านับร่วมด้วย
+            const repairDate = new Date(r.updated_at || r.created_at);
+            return repairDate.getMonth() === currentMonth && repairDate.getFullYear() === currentYear;
+        }).length;
+
+        // 2. อัปเดตตัวเลขขึ้นการ์ดสรุปสถานะ (Overview Cards)
+        if (pendingCountEl) pendingCountEl.innerText = pendingCount;
+        if (progressCountEl) progressCountEl.innerText = progressCount;
+        if (completedCountEl) completedCountEl.innerText = completedThisMonthCount;
+
+        // 3. วาดตารางรายการแจ้งซ่อม
+        renderRepairTable(currentRepairs);
+
+    } catch (error) {
+        console.error('Fetch Repair Page Error:', error);
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">
+                        ❌ ${escapeHTML(error.message)}
+                    </td>
+                </tr>`;
+        }
+    }
 
     tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
 
@@ -3354,6 +3402,54 @@ async function fetchRepairPage() {
         console.error('Fetch Repairs Error:', error);
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
     }
+}
+// ฟังก์ชันสำหรับ Render แถวในตารางรายการแจ้งซ่อม
+function renderRepairTable(repairs) {
+    const tableBody = document.getElementById('repair-table-body');
+    if (!tableBody) return;
+
+    if (repairs.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-10 text-gray-400 font-medium">
+                    ไม่พบรายการแจ้งซ่อมในระบบ
+                </td>
+            </tr>`;
+        return;
+    }
+
+    tableBody.innerHTML = repairs.map(item => {
+        let statusBadge = '';
+        if (item.status === 'รอดำเนินการ') {
+            statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-rose-100 text-rose-700 border border-rose-200">🔴 รอดำเนินการ</span>`;
+        } else if (item.status === 'กำลังซ่อมแซม') {
+            statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-700 border border-amber-200">🟡 กำลังซ่อมแซม</span>`;
+        } else {
+            statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ ซ่อมเสร็จสิ้น</span>`;
+        }
+
+        const imgHtml = item.image_url 
+            ? `<a href="${item.image_url}" target="_blank" class="text-indigo-600 hover:underline text-xs font-bold">🖼️ ดูรูป</a>`
+            : `<span class="text-gray-400 text-xs">-</span>`;
+
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50/80 transition-colors">
+                <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(item.created_at || '-')}</td>
+                <td class="p-4 font-bold text-gray-800">ห้อง ${escapeHTML(item.room_number || item.room || '-')}</td>
+                <td class="p-4 text-sm text-gray-700">${escapeHTML(item.detail || item.description || '-')}</td>
+                <td class="p-4">${imgHtml}</td>
+                <td class="p-4 text-sm text-gray-600">${escapeHTML(item.reporter || item.tenant || '-')}</td>
+                <td class="p-4">${statusBadge}</td>
+                <td class="p-4 text-center">
+                    <select onchange="updateRepairStatus(${item.id}, this.value)" class="text-xs p-2 rounded-xl border border-gray-200 bg-white font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                        <option value="รอดำเนินการ" ${item.status === 'รอดำเนินการ' ? 'selected' : ''}>🔴 รอดำเนินการ</option>
+                        <option value="กำลังซ่อมแซม" ${item.status === 'กำลังซ่อมแซม' ? 'selected' : ''}>🟡 กำลังซ่อมแซม</option>
+                        <option value="ซ่อมเสร็จสิ้น" ${item.status === 'ซ่อมเสร็จสิ้น' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
+                    </select>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function renderRepairImages(images, repairId) {
@@ -3704,6 +3800,35 @@ async function deleteRepair(id) {
         console.error('Delete Repair Error:', error);
         alert('❌ ' + error.message);
     }
+}
+
+document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'searchRepair') {
+        filterRepairTable();
+    }
+});
+
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'filterRepairStatus') {
+        filterRepairTable();
+    }
+});
+
+function filterRepairTable() {
+    const keyword = (document.getElementById('searchRepair')?.value || '').toLowerCase();
+    const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
+
+    const filtered = currentRepairs.filter(item => {
+        const matchKeyword = (item.room_number || item.room || '').toLowerCase().includes(keyword) ||
+                             (item.detail || item.description || '').toLowerCase().includes(keyword) ||
+                             (item.reporter || item.tenant || '').toLowerCase().includes(keyword);
+
+        const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+
+        return matchKeyword && matchStatus;
+    });
+
+    renderRepairTable(filtered);
 }
 
 
