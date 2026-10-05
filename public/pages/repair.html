@@ -97,3 +97,41 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* กำหนดคอลัมน์ที่ 4 (ภาพประกอบ) ให้สามารถเลื่อนซ้าย-ขวาได้ */
+    #repair-table-body td:nth-child(4) {
+        max-width: 250px;       /* จำกัดความกว้างไม่ให้ตารางขยายเกินไป */
+        overflow-x: auto;       /* เปิดใช้งานการเลื่อนแนวนอน */
+        white-space: nowrap;    /* บังคับไม่ให้รูปภาพตกบรรทัด */
+        scrollbar-width: thin;  /* ทำให้ Scrollbar มีขนาดเล็ก (สำหรับ Firefox) */
+        padding-bottom: 8px;    /* เพิ่มพื้นที่ด้านล่างไม่ให้ชิดขอบ */
+    }
+
+    /* ปรับแต่ง Scrollbar สำหรับ Chrome/Safari/Edge */
+    #repair-table-body td:nth-child(4)::-webkit-scrollbar {
+        height: 6px;
+    }
+    #repair-table-body td:nth-child(4)::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 10px;
+    }
+
+    /* ปรับขนาดและระยะห่างของรูปภาพแต่ละรูป */
+    #repair-table-body td:nth-child(4) img {
+        display: inline-block;
+        width: 80px;            /* กำหนดความกว้างรูป */
+        height: 80px;           /* กำหนดความสูงรูป */
+        object-fit: cover;
+        border-radius: 8px;
+        margin-right: 8px;      /* ระยะห่างระหว่างรูป */
+        border: 1px solid #f3f4f6;
+        transition: transform 0.2s;
+    }
+
+    /* เพิ่มลูกเล่นเมื่อชี้เมาส์ที่รูป */
+    #repair-table-body td:nth-child(4) img:hover {
+        transform: scale(1.05);
+        cursor: pointer;
+    }
+</style>
