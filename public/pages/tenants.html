@@ -54,35 +54,39 @@
                     </div>
                 </div>
             </div>
-
+            
             <!-- Form -->
             <form id="tenant-form" class="space-y-5" onsubmit="saveTenant(event)">
-                <input type="hidden" id="tenant-id" value="">
-                
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">ชื่อ - นามสกุล <span class="text-rose-500">*</span></label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">📝</div>
-                            <input type="text" id="ocr-name" required class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="เช่น นายสมชาย ใจดี">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">ชื่อเล่น</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">🏷️</div>
-                            <input type="text" id="ocr-nickname" class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="เช่น สม, หญิง">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">เลขบัตรประชาชน</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">🪪</div>
-                            <input type="text" id="ocr-id" class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="x-xxxx-xxxxx-xx-x">
-                        </div>
+            <input type="hidden" id="tenant-id" value="">
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- 1. ช่องชื่อ - นามสกุล -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">ชื่อ - นามสกุล <span class="text-rose-500">*</span></label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">📝</div>
+                        <input type="text" id="ocr-name" required class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="เช่น นายสมชาย ใจดี">
                     </div>
                 </div>
 
+                <!-- 2. ช่องชื่อเล่น (สลับมาอยู่ช่องกลางให้ถูกต้อง) -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">ชื่อเล่น</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">🏷️</div>
+                        <input type="text" id="ocr-nickname" class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="เช่น สม, หญิง">
+                    </div>
+                </div>
+
+                <!-- 3. ช่องเลขบัตรประชาชน -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">เลขบัตรประชาชน</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">🪪</div>
+                        <input type="text" id="ocr-id" class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors" placeholder="x-xxxx-xxxxx-xx-x">
+                    </div>
+                </div>
+            </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
