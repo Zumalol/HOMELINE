@@ -1038,10 +1038,16 @@ function filterDashboardRooms() {
         const matchSearch = (r.number || '').toLowerCase().includes(searchKeyword) || 
                             (r.tenant || '').toLowerCase().includes(searchKeyword);
         
+      
         // กรองสถานะห้อง
         let matchFilter = true;
         if (filterOption !== 'all') {
-            matchFilter = r.status === filterOption;
+            if (filterOption === 'ToBeMoved') {
+                // กรองเฉพาะห้องที่มีการติ๊กเตรียมย้ายออก
+                matchFilter = r.is_moving_out === true;
+            } else {
+                matchFilter = r.status === filterOption;
+            }
         }
 
         // กรองกลุ่มหอพัก
@@ -3903,13 +3909,16 @@ async function simulateTenantSign(id) {
 // =====================================================
 
 // ตัวแปรสำหรับจัดการสถานะ Gallery รูปภาพ
-let modalGalleryImages = [];
-let currentModalImageIndex = 0;
+// let modalGalleryImages = [];
+// let currentModalImageIndex = 0;
+var modalGalleryImages = [];
+var currentModalImageIndex = 0;
 
 function showRoomDetailModal(roomId) {
     // หาข้อมูลห้องจาก Array dashboardRoomsData
     const room = dashboardRoomsData.find(r => Number(r.id) === Number(roomId));
     if (!room) return;
+    
 
     // อ่านข้อมูลรูปภาพ (ถ้ามี)
     modalGalleryImages = [];
