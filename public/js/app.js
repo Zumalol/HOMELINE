@@ -103,6 +103,7 @@ async function switchTab(tab) {
         await loadComponent('main-content', '/pages/rooms.html');
         await fetchDormitories();
         await fetchDormitoriesForSelect();
+        await fetchDormitoriesForTableFilter();
         await fetchTenantsForRoomSelect();
         await fetchRoomsPage();
     }
