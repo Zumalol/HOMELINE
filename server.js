@@ -235,56 +235,7 @@ app.get(`${apiPrefix}/dashboard`, async (req, res) => {
     }
 
 });
-/*
-|--------------------------------------------------------------------------
-| ROOMS & DORMITORIES API (สำหรับจัดการห้องพักและฟิลเตอร์)
-|--------------------------------------------------------------------------
-*/
 
-// 1. API สำหรับดึงรายชื่อกลุ่มหอพักทั้งหมด (นำไปทำเป็นตัวเลือก Dropdown ใน Frontend)
-app.get(`${apiPrefix}/dormitories`, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM dormitories ORDER BY id ASC');
-        res.json({ success: true, dormitories: result.rows });
-    } catch (error) {
-        console.error('Fetch Dormitories Error:', error);
-        res.status(500).json({ success: false, message: 'Database error', error: error.message });
-    }
-});
-
-// 2. API ดึงข้อมูลห้องพัก (รองรับการฟิลเตอร์ผ่าน query parameter เช่น ?dormitory_id=1)
-app.get(`${apiPrefix}/rooms`, async (req, res) => {
-    const { dormitory_id } = req.query;
-
-    try {
-        let query = `
-            SELECT r.*, d.name as dormitory_name 
-            FROM rooms r
-            LEFT JOIN dormitories d ON r.dormitory_id = d.id
-        `;
-        let params = [];
-
-        // เช็คว่ามีการส่งค่า filter กลุ่มหอพักมาหรือไม่ (ถ้าเป็น 'all' คือให้ดึงทั้งหมด)
-        if (dormitory_id && dormitory_id !== 'all') {
-            if (dormitory_id === 'unassigned') {
-                // กรณีต้องการดูห้องที่ยังไม่ได้ระบุกลุ่มหอพัก
-                query += ` WHERE r.dormitory_id IS NULL`;
-            } else {
-                // กรณีเลือกกลุ่มหอพักตาม ID
-                query += ` WHERE r.dormitory_id = $1`;
-                params.push(dormitory_id);
-            }
-        }
-
-        query += ` ORDER BY r.number ASC`; // เรียงลำดับตามหมายเลขห้อง
-
-        const result = await pool.query(query, params);
-        res.json({ success: true, rooms: result.rows });
-    } catch (error) {
-        console.error('Fetch Rooms Error:', error);
-        res.status(500).json({ success: false, message: 'Database error', error: error.message });
-    }
-});
 
 /*
 |--------------------------------------------------------------------------
