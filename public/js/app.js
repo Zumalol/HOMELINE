@@ -47,9 +47,12 @@ async function fetchDormitoriesForSelect() {
         const res = await fetch('/api/dormitories');
         const data = await res.json();
         const select = document.getElementById('roomDormSelect');
-        if (select && data.success) {
+
+        const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+
+        if (select) {
             select.innerHTML = '<option value="">-- เลือกกลุ่มหอพัก --</option>' + 
-                data.dormitories.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
+                dorms.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
         }
     } catch (e) {
         console.error('Error fetching dormitories for select:', e);
@@ -151,22 +154,28 @@ async function fetchDormitories() {
     try {
         const res = await fetch('/api/dormitories');
         const data = await res.json();
-        if (data.success) {
-            currentDormitories = data.dormitories;
-            const list = document.getElementById('dormitory-list');
-            if (list) {
-                list.innerHTML = currentDormitories.map(d => `
-                    <li class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
-                        <span class="font-medium text-gray-700">${escapeHTML(d.name)}</span>
-                        <div class="space-x-2">
-                            <button onclick="editDormitory(${d.id}, '${d.name}')" class="text-blue-600 hover:text-blue-800 text-sm">✏️ แก้ไข</button>
-                            <button onclick="deleteDormitory(${d.id})" class="text-red-600 hover:text-red-800 text-sm">🗑️ ลบ</button>
-                        </div>
-                    </li>
-                `).join('');
-            }
+        const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+        currentDormitories = dorms;
+
+        const list = document.getElementById('dormitory-list');
+        if (list) {
+            list.innerHTML = currentDormitories.map(d => `
+                <li class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
+                    <span class="font-medium text-gray-700">${escapeHTML(d.name)}</span>
+                    <div class="space-x-2">
+                        <button onclick="editDormitory(${d.id}, '${escapeHTML(d.name)}')" class="text-blue-600 hover:text-blue-800 text-sm">✏️ แก้ไข</button>
+                        <button onclick="deleteDormitory(${d.id})" class="text-red-600 hover:text-red-800 text-sm">🗑️ ลบ</button>
+                    </div>
+                </li>
+            `).join('');
         }
-    } catch (e) { console.error('Fetch Dormitories Error:', e); }
+
+        // ซิงก์ข้อมูลใส่ Dropdown ทั้ง 2 จุดอัตโนมัติ
+        await fetchDormitoriesForSelect();
+        await fetchDormitoriesForTableFilter();
+    } catch (e) { 
+        console.error('Fetch Dormitories Error:', e); 
+    }
 }
 
 async function addDormitory() {
@@ -945,9 +954,13 @@ async function fetchDormitoriesForTableFilter() {
         const res = await fetch('/api/dormitories');
         const data = await res.json();
         const select = document.getElementById('tableDormFilter');
-        if (select && data.success) {
+        
+        // แปลงข้อมูลให้เป็น Array ไม่ว่าจะตอบกลับมาในรูปแบบไหน
+        const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+
+        if (select) {
             select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
-                data.dormitories.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
+                dorms.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
         }
     } catch (e) {
         console.error('Error fetching dormitories for filter:', e);
