@@ -718,13 +718,9 @@ async function fetchExportedBills() {
             if (file.due_date && paymentStatus !== 'ชำระเงินแล้ว') {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-
                 const due = new Date(file.due_date);
                 due.setHours(0, 0, 0, 0);
-
-                if (today > due) {
-                    paymentStatus = 'เกินกำหนด'; 
-                }
+                if (today > due) paymentStatus = 'เกินกำหนด'; 
             }
 
             if (paymentStatus === 'ชำระเงินแล้ว') {
@@ -737,13 +733,21 @@ async function fetchExportedBills() {
 
             const imgUrl = file.url || `/exports/${file.name}`;
             const dormName = file.dormitory_name || file.dormName || '';
-            const billMonth = file.bill_month || file.billMonth || '';
+            
+            // 📌 แกะข้อมูลเดือน (YYYY-MM) จากชื่อไฟล์หาก backend ไม่ได้ส่งมา
+            let billMonth = file.bill_month || file.billMonth || '';
+            if (!billMonth && file.name) {
+                const monthMatch = file.name.match(/(\d{4})[-_](\d{2})/);
+                if (monthMatch) {
+                    billMonth = `${monthMatch[1]}-${monthMatch[2]}`;
+                }
+            }
 
             return `
             <div class="bill-card bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-indigo-200 transition-all duration-300 group flex flex-col relative"
                  data-filename="${escapeHTML(file.name.toLowerCase())}"
                  data-dorm="${escapeHTML(dormName.toLowerCase())}"
-                 data-month="${escapeHTML(billMonth)}">
+                 data-month="${escapeHTML(billMonth.toLowerCase())}">
                 
                 <a href="${imgUrl}" target="_blank" class="block overflow-hidden bg-gray-50 relative h-56">
                     <img src="${imgUrl}" 
@@ -799,27 +803,39 @@ async function fetchDormitoriesForBillFilter() {
 }
 
 // 3. ฟังก์ชันการกรองบิลตาม คำค้นหา, กลุ่มหอพัก, และ ประจำเดือน
+
 function filterExportedBills() {
     const searchKeyword = (document.getElementById('searchBillInput')?.value || '').toLowerCase().trim();
-    const selectedDorm = (document.getElementById('filterBillDorm')?.value || 'all').toLowerCase();
-    const selectedMonth = document.getElementById('filterBillMonth')?.value || ''; // รูปแบบ YYYY-MM
+    const selectedDorm = (document.getElementById('filterBillDorm')?.value || 'all').toLowerCase().trim();
+    const selectedMonth = (document.getElementById('filterBillMonth')?.value || '').trim(); // เช่น "2026-10"
+
+    // เตรียมรูปแบบเดือนทั้ง 2 แบบ เช่น "2026-10" และ "2026_10"
+    const monthHyphen = selectedMonth; 
+    const monthUnderscore = selectedMonth.replace('-', '_');
 
     const cards = document.querySelectorAll('#bills-grid .bill-card');
     let visibleCount = 0;
 
     cards.forEach(card => {
-        const fileName = card.getAttribute('data-filename') || '';
-        const cardDorm = card.getAttribute('data-dorm') || '';
-        const cardMonth = card.getAttribute('data-month') || '';
+        const fileName = (card.getAttribute('data-filename') || '').toLowerCase();
+        const cardDorm = (card.getAttribute('data-dorm') || '').toLowerCase();
+        const cardMonth = (card.getAttribute('data-month') || '').toLowerCase();
 
-        // 1. ตรวจสอบคำค้นหา
+        // 1. ตรวจสอบคำค้นหา (ชื่อไฟล์หรือเลขห้อง)
         const matchSearch = !searchKeyword || fileName.includes(searchKeyword);
         
         // 2. ตรวจสอบกลุ่มหอพัก (เช็คจาก attribute หรือค้นในชื่อไฟล์)
-        const matchDorm = selectedDorm === 'all' || cardDorm.includes(selectedDorm) || fileName.includes(selectedDorm);
+        const matchDorm = selectedDorm === 'all' || 
+                          (cardDorm && cardDorm.includes(selectedDorm)) || 
+                          fileName.includes(selectedDorm);
 
-        // 3. ตรวจสอบเดือน (เช็คจาก attribute หรือค้นในชื่อไฟล์)
-        const matchMonth = !selectedMonth || cardMonth.includes(selectedMonth) || fileName.includes(selectedMonth);
+        // 3. ตรวจสอบเดือน (รองรับทั้ง YYYY-MM, YYYY_MM และการเช็คจากชื่อไฟล์)
+        let matchMonth = true;
+        if (selectedMonth) {
+            matchMonth = (cardMonth && (cardMonth.includes(monthHyphen) || cardMonth.includes(monthUnderscore))) ||
+                         fileName.includes(monthHyphen) || 
+                         fileName.includes(monthUnderscore);
+        }
 
         if (matchSearch && matchDorm && matchMonth) {
             card.style.display = 'flex';
@@ -829,7 +845,7 @@ function filterExportedBills() {
         }
     });
 
-    // แสดงข้อความเมื่อไม่พบข้อมูล
+    // แสดงข้อความเมื่อค้นหาไม่พบ
     let noResultMsg = document.getElementById('no-bill-result');
     const grid = document.getElementById('bills-grid');
 
@@ -847,6 +863,7 @@ function filterExportedBills() {
         noResultMsg.style.display = 'none';
     }
 }
+
 
 // 4. ล้างตัวกรองทั้งหมด
 function resetBillFilters() {
