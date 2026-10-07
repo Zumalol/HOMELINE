@@ -1,62 +1,86 @@
-<div class="bg-white p-6 rounded-xl shadow-sm border w-full max-w-5xl">
-    <div class="flex justify-between items-center mb-6">
-        <div>
-            <h2 class="text-xl font-bold text-gray-800">📄 รายการบิลที่ออกแล้ว</h2>
-            <p class="text-sm text-gray-500">ตรวจสอบรูปภาพบิลแจ้งหนี้ที่ระบบสร้างขึ้นในโฟลเดอร์ exports</p>
-        </div>
-        
-        <!-- แถบตัวกรองและค้นหาบิล -->
-        <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
-                <!-- 1. ค้นหาตามชื่อไฟล์ / เลขห้อง -->
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">🔍 ค้นหาบิล</label>
-                    <input type="text" 
-                        id="searchBillInput" 
-                        onkeyup="filterExportedBills()" 
-                        placeholder="พิมพ์ชื่อไฟล์ หรือ เลขห้อง..." 
-                        class="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
-                </div>
-
-                <!-- 2. ตัวกรองกลุ่มหอพัก -->
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">🏢 กลุ่มหอพัก</label>
-                    <select id="filterBillDorm" 
-                            onchange="filterExportedBills()" 
-                            class="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
-                        <option value="all">🏢 ทุกกลุ่มหอพัก</option>
-                    </select>
-                </div>
-
-                <!-- 3. ตัวกรองประจำเดือนที่ออกบิล -->
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">📅 บิลออกเดือนไหน</label>
-                    <input type="month" 
-                        id="filterBillMonth" 
-                        onchange="filterExportedBills()" 
-                        class="w-full px-3.5 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
-                </div>
-
+<div class="w-full max-w-7xl mx-auto space-y-6 p-4 sm:p-6">
+    
+    <!-- 1. Header ส่วนหัวของหน้า -->
+    <div class="bg-white p-5 sm:p-6 rounded-2xl shadow-xs border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl font-bold shadow-xs border border-indigo-100/60 shrink-0">
+                📄
             </div>
-
-            <!-- ปุ่มรีเซ็ตตัวกรอง -->
-            <div class="flex justify-end mt-3">
-                <button onclick="resetBillFilters()" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1">
-                    🔄 ล้างตัวกรองทั้งหมด
-                </button>
+            <div>
+                <h2 class="text-xl font-bold text-slate-800 tracking-tight">รายการบิลที่ออกแล้ว</h2>
+                <p class="text-xs sm:text-sm text-slate-500">ตรวจสอบ ค้นหา และจัดการรูปภาพบิลแจ้งหนี้ที่ระบบสร้างขึ้น</p>
             </div>
         </div>
 
-        <!-- ตาราง/การ์ดแสดงรายการบิล -->
-        <div id="bills-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <!-- รายการบิลจะถูกวาดที่นี่ -->
-        </div>
-            
-    <!-- พื้นที่แสดงการ์ดบิล -->
-    <div id="bills-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-        <div class="text-center py-10 text-gray-400 col-span-full">
-            ⏳ กำลังโหลดข้อมูลบิล...
+        <div class="flex items-center gap-2 self-start sm:self-center">
+            <button onclick="fetchExportedBills()" class="px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl transition-all flex items-center gap-1.5 border border-slate-200/80 shadow-2xs">
+                🔄 โหลดข้อมูลใหม่
+            </button>
         </div>
     </div>
+
+    <!-- 2. แถบตัวกรองและค้นหาบิล (Filter Bar) -->
+    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+        
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">🎯 ตัวกรองค้นหา</span>
+            </div>
+            <button onclick="resetBillFilters()" class="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-indigo-50 transition-all">
+                🔄 ล้างตัวกรองทั้งหมด
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            
+            <!-- ช่องค้นหาตามชื่อไฟล์ / เลขห้อง -->
+            <div>
+                <label for="searchBillInput" class="block text-xs font-bold text-slate-600 mb-1.5">
+                    🔍 ค้นหาบิล
+                </label>
+                <input type="text" 
+                    id="searchBillInput" 
+                    onkeyup="filterExportedBills()" 
+                    placeholder="พิมพ์ชื่อไฟล์ หรือ เลขห้อง..." 
+                    class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 placeholder-slate-400">
+            </div>
+
+            <!-- ตัวกรองกลุ่มหอพัก -->
+            <div>
+                <label for="filterBillDorm" class="block text-xs font-bold text-slate-600 mb-1.5">
+                    🏢 กลุ่มหอพัก
+                </label>
+                <select id="filterBillDorm" 
+                        onchange="filterExportedBills()" 
+                        class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 cursor-pointer">
+                    <option value="all">🏢 ทุกกลุ่มหอพัก</option>
+                </select>
+            </div>
+
+            <!-- ตัวกรองประจำเดือนที่ออกบิล -->
+            <div>
+                <label for="filterBillMonth" class="block text-xs font-bold text-slate-600 mb-1.5">
+                    📅 บิลออกเดือนไหน
+                </label>
+                <input type="month" 
+                    id="filterBillMonth" 
+                    onchange="filterExportedBills()" 
+                    class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-800 cursor-pointer">
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 3. พื้นที่แสดงการ์ดบิล (Bills Grid) -->
+    <div id="bills-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+        <!-- โครงสร้าง Loading เริ่มต้น -->
+        <div class="col-span-full py-16 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 mb-3 animate-pulse">
+                ⏳
+            </div>
+            <p class="text-sm font-bold text-slate-700">กำลังโหลดข้อมูลบิล...</p>
+            <p class="text-xs text-slate-400 mt-1">กรุณารอสักครู่ ระบบกำลังดึงข้อมูลรายการบิลล่าสุด</p>
+        </div>
+    </div>
+
 </div>
