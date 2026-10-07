@@ -689,6 +689,9 @@ async function fetchExportedBills() {
     grid.innerHTML = '<div class="text-center py-10 text-indigo-400 font-medium col-span-full animate-pulse">⏳ กำลังโหลดข้อมูลบิล...</div>';
     
     try {
+        // โหลดข้อมูลกลุ่มหอพักมาใส่ Dropdown
+        await fetchDormitoriesForBillFilter();
+
         const res = await fetch('/api/exported-bills');
         const data = await res.json();
         
@@ -706,30 +709,24 @@ async function fetchExportedBills() {
             return;
         }
         
-        // เรียงลำดับจากบิลใหม่ล่าสุดไปเก่าสุด
         const sortedFiles = data.files.sort((a, b) => b.name.localeCompare(a.name));
         
         grid.innerHTML = sortedFiles.map(file => {
-            // 📍 แก้ไขจุดที่ 1: เปลี่ยนจาก const เป็น let เพื่อให้แก้ค่าสถานะได้โดยไม่เกิด runtime error
             let paymentStatus = file.payment_status || 'ค้างชำระ';
             let statusBadge = '';
 
-            // 📍 แก้ไขจุดที่ 2: ปรับระบบเปรียบเทียบวันเวลาให้เสถียรและแม่นยำ (คำนวณแบบ Local Midnight)
             if (file.due_date && paymentStatus !== 'ชำระเงินแล้ว') {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
 
-                const due = new Date(file.due_date); // เปลี่ยนจาก dueDate เป็น file.due_date
+                const due = new Date(file.due_date);
                 due.setHours(0, 0, 0, 0);
 
-                // หากบิลเกินกำหนด ให้เปลี่ยนสถานะสำหรับการแสดงป้าย (Badge)
                 if (today > due) {
                     paymentStatus = 'เกินกำหนด'; 
                 }
             }
 
-            
-            // สร้าง ป้ายสถานะ (Badge)
             if (paymentStatus === 'ชำระเงินแล้ว') {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-emerald-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-emerald-400/50 z-10">✅ ชำระเงินแล้ว</span>`;
             } else if (paymentStatus === 'เกินกำหนด') {
@@ -738,40 +735,37 @@ async function fetchExportedBills() {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-orange-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-orange-400/50 z-10 animate-pulse">⏳ ค้างชำระ</span>`;
             }
 
-            // 📍 แก้ไขจุดที่ 3: กำหนด Path สำรองกรณี file.url เป็น undefined
             const imgUrl = file.url || `/exports/${file.name}`;
+            const dormName = file.dormitory_name || file.dormName || '';
+            const billMonth = file.bill_month || file.billMonth || '';
 
             return `
-            <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-indigo-200 transition-all duration-300 group flex flex-col relative">
+            <div class="bill-card bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-indigo-200 transition-all duration-300 group flex flex-col relative"
+                 data-filename="${escapeHTML(file.name.toLowerCase())}"
+                 data-dorm="${escapeHTML(dormName.toLowerCase())}"
+                 data-month="${escapeHTML(billMonth)}">
                 
-                <!-- รูปภาพบิล -->
                 <a href="${imgUrl}" target="_blank" class="block overflow-hidden bg-gray-50 relative h-56">
                     <img src="${imgUrl}" 
                          alt="${escapeHTML(file.name)}" 
                          onerror="this.onerror=null; this.src='https://via.placeholder.com/400x500?text=Bill+Image+Not+Found';"
                          class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500">
                     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300"></div>
-                    
                     ${statusBadge}
                 </a>
                 
                 <div class="p-4 flex flex-col flex-1">
-                    <!-- ชื่อไฟล์ -->
                     <p class="text-sm font-bold text-gray-800 truncate mb-4" title="${escapeHTML(file.name)}">
                         ${escapeHTML(file.name)}
                     </p>
                     
-                    
-                    <!-- กลุ่มปุ่มกด -->
                     <div class="flex gap-2 mt-auto">
                         <a href="${imgUrl}" target="_blank" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 py-2.5 rounded-xl hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-all shadow-sm hover:shadow active:scale-95">
                             👁️ ดูรูป
                         </a>
-                        
                         <a href="${imgUrl}" download class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-indigo-600 text-white py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-sm hover:shadow-md active:scale-95">
                             ⬇️ โหลด
                         </a>
-                        
                         <button onclick="deleteExportedBill('${encodeURIComponent(file.name)}')" class="flex items-center justify-center px-3.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm hover:shadow active:scale-95" title="ลบบิลนี้">
                             🗑️
                         </button>
@@ -786,6 +780,85 @@ async function fetchExportedBills() {
         grid.innerHTML = `<div class="text-center py-10 text-rose-500 font-bold bg-rose-50 rounded-xl col-span-full">❌ ${error.message}</div>`;
     }
 }
+
+// 2. โหลดรายชื่อกลุ่มหอพักใส่ Dropdown กรองบิล
+async function fetchDormitoriesForBillFilter() {
+    const select = document.getElementById('filterBillDorm');
+    if (!select) return;
+
+    try {
+        const res = await fetch('/api/dormitories');
+        const data = await res.json();
+        const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+
+        select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
+            dorms.map(d => `<option value="${escapeHTML(d.name.toLowerCase())}">${escapeHTML(d.name)}</option>`).join('');
+    } catch (e) {
+        console.error('Error fetching dormitories for bill filter:', e);
+    }
+}
+
+// 3. ฟังก์ชันการกรองบิลตาม คำค้นหา, กลุ่มหอพัก, และ ประจำเดือน
+function filterExportedBills() {
+    const searchKeyword = (document.getElementById('searchBillInput')?.value || '').toLowerCase().trim();
+    const selectedDorm = (document.getElementById('filterBillDorm')?.value || 'all').toLowerCase();
+    const selectedMonth = document.getElementById('filterBillMonth')?.value || ''; // รูปแบบ YYYY-MM
+
+    const cards = document.querySelectorAll('#bills-grid .bill-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        const fileName = card.getAttribute('data-filename') || '';
+        const cardDorm = card.getAttribute('data-dorm') || '';
+        const cardMonth = card.getAttribute('data-month') || '';
+
+        // 1. ตรวจสอบคำค้นหา
+        const matchSearch = !searchKeyword || fileName.includes(searchKeyword);
+        
+        // 2. ตรวจสอบกลุ่มหอพัก (เช็คจาก attribute หรือค้นในชื่อไฟล์)
+        const matchDorm = selectedDorm === 'all' || cardDorm.includes(selectedDorm) || fileName.includes(selectedDorm);
+
+        // 3. ตรวจสอบเดือน (เช็คจาก attribute หรือค้นในชื่อไฟล์)
+        const matchMonth = !selectedMonth || cardMonth.includes(selectedMonth) || fileName.includes(selectedMonth);
+
+        if (matchSearch && matchDorm && matchMonth) {
+            card.style.display = 'flex';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    // แสดงข้อความเมื่อไม่พบข้อมูล
+    let noResultMsg = document.getElementById('no-bill-result');
+    const grid = document.getElementById('bills-grid');
+
+    if (visibleCount === 0 && cards.length > 0) {
+        if (!noResultMsg) {
+            noResultMsg = document.createElement('div');
+            noResultMsg.id = 'no-bill-result';
+            noResultMsg.className = 'col-span-full text-center py-12 text-gray-500 font-bold bg-gray-50 rounded-2xl border border-dashed border-gray-200';
+            noResultMsg.innerHTML = '🔍 ไม่พบข้อมูลบิลตามเงื่อนไขที่เลือก';
+            grid.appendChild(noResultMsg);
+        } else {
+            noResultMsg.style.display = 'block';
+        }
+    } else if (noResultMsg) {
+        noResultMsg.style.display = 'none';
+    }
+}
+
+// 4. ล้างตัวกรองทั้งหมด
+function resetBillFilters() {
+    if (document.getElementById('searchBillInput')) document.getElementById('searchBillInput').value = '';
+    if (document.getElementById('filterBillDorm')) document.getElementById('filterBillDorm').value = 'all';
+    if (document.getElementById('filterBillMonth')) document.getElementById('filterBillMonth').value = '';
+    filterExportedBills();
+}
+
+// เปิดให้เรียกใช้ในสโคป window
+window.filterExportedBills = filterExportedBills;
+window.resetBillFilters = resetBillFilters;
 
 async function deleteExportedBill(encodedFilename) {
     // ถอดรหัสชื่อไฟล์กลับเป็นข้อความปกติเพื่อใช้แสดงในหน้าต่าง Confirm
@@ -1865,38 +1938,23 @@ async function handleOcrUpload(event) {
 // =====================================================
 async function fetchBillingOptions() {
     try {
-        // 1. โหลดข้อมูลกลุ่มหอพัก (รองรับทั้ง Array และ Object)
         const resDorms = await fetch('/api/dormitories');
         const dormsData = await resDorms.json();
         const dormSelect = document.getElementById('billDormName');
-        const dorms = Array.isArray(dormsData) ? dormsData : (dormsData.dormitories || dormsData.data || []);
-
-        if (dormSelect) {
+        if (dormSelect && dormsData.success) {
             dormSelect.innerHTML = '<option value="">-- เลือกกลุ่มหอพัก --</option>' + 
-                dorms.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
+                dormsData.dormitories.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
         }
 
-        // 2. โหลดข้อมูลรายชื่อผู้ใช้ LINE (รองรับทั้ง Array และ Object)
         const resLine = await fetch('/api/line-friends');
         const lineData = await resLine.json();
         const lineSelect = document.getElementById('billLineUser');
-        const friends = Array.isArray(lineData) ? lineData : (lineData.friends || lineData.data || []);
-
-        if (lineSelect) {
+        if (lineSelect && lineData.success) {
             lineSelect.innerHTML = '<option value="">-- ไม่ส่ง LINE / พิมพ์ชื่อเพื่อค้นหา --</option>' + 
-                friends.map(f => `<option value="${f.user_id}">${escapeHTML(f.display_name)}</option>`).join('');
+                lineData.friends.map(f => `<option value="${f.user_id}">${escapeHTML(f.display_name)}</option>`).join('');
         }
 
-        // 3. กำหนดค่าเริ่มต้นให้ "เดือนที่ออกบิล" (billMonth) เป็นเดือนปัจจุบันอัตโนมัติ
-        const billMonthInput = document.getElementById('billMonth');
-        if (billMonthInput && !billMonthInput.value) {
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            billMonthInput.value = `${year}-${month}`;
-        }
-
-        // 4. โหลดตัวเลือกบัญชีรับเงินเข้า Dropdown
+        // เพิ่มการโหลดตัวเลือกบัญชีรับเงินเข้า Dropdown
         await loadPaymentOptionsForBilling();
     } catch (e) {
         console.error('Error fetching billing options:', e);
@@ -1955,13 +2013,9 @@ async function fetchRoomsForBilling() {
     try {
         const res = await fetch('/api/rooms');
         const rooms = await res.json();
-        const allRooms = Array.isArray(rooms) ? rooms : (rooms.rooms || rooms.data || []);
         
-        // กรองเฉพาะห้องที่มีผู้เช่า (Occupied) และอยู่ในกลุ่มหอพักที่เลือก (เช็คทั้งชื่อและ ID)
-        currentBillingRooms = allRooms.filter(r => 
-            (r.dormitory_name === selectedDorm || String(r.dormitory_id) === String(selectedDorm)) && 
-            r.status === 'Occupied'
-        );
+        // กรองเฉพาะห้องที่มีผู้เช่าและอยู่ในหอพักที่เลือก
+        currentBillingRooms = rooms.filter(r => r.dormitory_name === selectedDorm && r.status === 'Occupied');
 
         if (currentBillingRooms.length === 0) {
             roomSelect.innerHTML = '<option value="">-- ไม่พบห้องที่มีผู้เช่าในหอพักนี้ --</option>';
@@ -1971,19 +2025,21 @@ async function fetchRoomsForBilling() {
         roomSelect.innerHTML = '<option value="">-- เลือกห้องพัก --</option>' + 
             currentBillingRooms.map(r => `<option value="${escapeHTML(r.number)}">ห้อง ${escapeHTML(r.number)} (${escapeHTML(r.tenant || '-')})</option>`).join('');
             
-        // เมื่อเปลี่ยนห้องพัก ให้ดึง LINE ID และบัญชีรับเงินที่ผูกไว้มาใส่ฟอร์มอัตโนมัติ
+        // เปลี่ยนใช้ roomSelect.onchange แทน addEventListener เพื่อป้องกัน Event ซ้ำซ้อน
         roomSelect.onchange = function() {
             const selectedRoomNumber = this.value;
             const roomData = currentBillingRooms.find(r => r.number === selectedRoomNumber);
             
             if (lineSelect && roomData && roomData.line_id) {
-                lineSelect.value = roomData.line_id;
+                lineSelect.value = roomData.line_id; // เลือก LINE ID ให้อัตโนมัติ
             } else if (lineSelect) {
-                lineSelect.value = "";
+                lineSelect.value = ""; // เว้นว่างหากผู้เช่าคนนั้นไม่มี LINE ID
             }
 
+            // ล้างค่าฟอร์มการชำระเงินเดิมออก
             resetBillingPaymentForm();
 
+            // หากห้องนี้มีเลขบัญชีผูกไว้อยู่แล้ว ให้เลือกให้อัตโนมัติ
             if (roomData && roomData.account_number) {
                 autoSelectPaymentAccountByNumber(roomData.account_number);
             }
