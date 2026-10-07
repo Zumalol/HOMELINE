@@ -1865,23 +1865,38 @@ async function handleOcrUpload(event) {
 // =====================================================
 async function fetchBillingOptions() {
     try {
+        // 1. โหลดข้อมูลกลุ่มหอพัก (รองรับทั้ง Array และ Object)
         const resDorms = await fetch('/api/dormitories');
         const dormsData = await resDorms.json();
         const dormSelect = document.getElementById('billDormName');
-        if (dormSelect && dormsData.success) {
+        const dorms = Array.isArray(dormsData) ? dormsData : (dormsData.dormitories || dormsData.data || []);
+
+        if (dormSelect) {
             dormSelect.innerHTML = '<option value="">-- เลือกกลุ่มหอพัก --</option>' + 
-                dormsData.dormitories.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
+                dorms.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
         }
 
+        // 2. โหลดข้อมูลรายชื่อผู้ใช้ LINE (รองรับทั้ง Array และ Object)
         const resLine = await fetch('/api/line-friends');
         const lineData = await resLine.json();
         const lineSelect = document.getElementById('billLineUser');
-        if (lineSelect && lineData.success) {
+        const friends = Array.isArray(lineData) ? lineData : (lineData.friends || lineData.data || []);
+
+        if (lineSelect) {
             lineSelect.innerHTML = '<option value="">-- ไม่ส่ง LINE / พิมพ์ชื่อเพื่อค้นหา --</option>' + 
-                lineData.friends.map(f => `<option value="${f.user_id}">${escapeHTML(f.display_name)}</option>`).join('');
+                friends.map(f => `<option value="${f.user_id}">${escapeHTML(f.display_name)}</option>`).join('');
         }
 
-        // เพิ่มการโหลดตัวเลือกบัญชีรับเงินเข้า Dropdown
+        // 3. กำหนดค่าเริ่มต้นให้ "เดือนที่ออกบิล" (billMonth) เป็นเดือนปัจจุบันอัตโนมัติ
+        const billMonthInput = document.getElementById('billMonth');
+        if (billMonthInput && !billMonthInput.value) {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            billMonthInput.value = `${year}-${month}`;
+        }
+
+        // 4. โหลดตัวเลือกบัญชีรับเงินเข้า Dropdown
         await loadPaymentOptionsForBilling();
     } catch (e) {
         console.error('Error fetching billing options:', e);
@@ -1940,9 +1955,13 @@ async function fetchRoomsForBilling() {
     try {
         const res = await fetch('/api/rooms');
         const rooms = await res.json();
+        const allRooms = Array.isArray(rooms) ? rooms : (rooms.rooms || rooms.data || []);
         
-        // กรองเฉพาะห้องที่มีผู้เช่าและอยู่ในหอพักที่เลือก
-        currentBillingRooms = rooms.filter(r => r.dormitory_name === selectedDorm && r.status === 'Occupied');
+        // กรองเฉพาะห้องที่มีผู้เช่า (Occupied) และอยู่ในกลุ่มหอพักที่เลือก (เช็คทั้งชื่อและ ID)
+        currentBillingRooms = allRooms.filter(r => 
+            (r.dormitory_name === selectedDorm || String(r.dormitory_id) === String(selectedDorm)) && 
+            r.status === 'Occupied'
+        );
 
         if (currentBillingRooms.length === 0) {
             roomSelect.innerHTML = '<option value="">-- ไม่พบห้องที่มีผู้เช่าในหอพักนี้ --</option>';
@@ -1952,21 +1971,19 @@ async function fetchRoomsForBilling() {
         roomSelect.innerHTML = '<option value="">-- เลือกห้องพัก --</option>' + 
             currentBillingRooms.map(r => `<option value="${escapeHTML(r.number)}">ห้อง ${escapeHTML(r.number)} (${escapeHTML(r.tenant || '-')})</option>`).join('');
             
-        // เปลี่ยนใช้ roomSelect.onchange แทน addEventListener เพื่อป้องกัน Event ซ้ำซ้อน
+        // เมื่อเปลี่ยนห้องพัก ให้ดึง LINE ID และบัญชีรับเงินที่ผูกไว้มาใส่ฟอร์มอัตโนมัติ
         roomSelect.onchange = function() {
             const selectedRoomNumber = this.value;
             const roomData = currentBillingRooms.find(r => r.number === selectedRoomNumber);
             
             if (lineSelect && roomData && roomData.line_id) {
-                lineSelect.value = roomData.line_id; // เลือก LINE ID ให้อัตโนมัติ
+                lineSelect.value = roomData.line_id;
             } else if (lineSelect) {
-                lineSelect.value = ""; // เว้นว่างหากผู้เช่าคนนั้นไม่มี LINE ID
+                lineSelect.value = "";
             }
 
-            // ล้างค่าฟอร์มการชำระเงินเดิมออก
             resetBillingPaymentForm();
 
-            // หากห้องนี้มีเลขบัญชีผูกไว้อยู่แล้ว ให้เลือกให้อัตโนมัติ
             if (roomData && roomData.account_number) {
                 autoSelectPaymentAccountByNumber(roomData.account_number);
             }
