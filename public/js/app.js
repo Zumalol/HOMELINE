@@ -1176,6 +1176,25 @@ async function fetchRoomsPage() {
 
 }
 
+// ฟังก์ชันสำหรับดึงข้อมูลห้องพัก
+async function fetchRooms() {
+    // ดึงค่า ID กลุ่มหอพักที่ถูกเลือกจาก Dropdown
+    const selectedDormId = document.getElementById('dormitoryFilter').value;
+    
+    try {
+        // ส่ง query param ไปยัง API ที่เราเพิ่งสร้าง
+        const response = await fetch(`/api/rooms?dormitory_id=${selectedDormId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const rooms = data.rooms;
+            renderRoomsTable(rooms); // ฟังก์ชันนำข้อมูลไปวาดลงตารางของคุณ
+        }
+    } catch (error) {
+        console.error('Error fetching rooms:', error);
+    }
+}
+
 // =====================================================
 // ROOM MULTIPLE IMAGES MANAGEMENT
 // =====================================================

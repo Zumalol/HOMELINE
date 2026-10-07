@@ -47,15 +47,11 @@
                 </div>
             </div>
         </div>
-        <!-- ส่วนฟอร์มและตารางแสดงรายการห้องพัก -->
-        <select 
-                id="dbFilterDorm" 
-                onchange="filterDashboardRooms()" 
-                class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm font-medium text-gray-600 cursor-pointer transition-all text-sm"
-            >
-                <option value="all">🏢 ทุกกลุ่มหอพัก</option>
+        <select id="dormitoryFilter" onchange="fetchRooms()">
+            <option value="all">ดูทุกกลุ่มหอพัก</option>
+            <!-- ใช้ JavaScript ดึง /api/dormitories มาใส่ตรงนี้ -->
         </select>
-
+      
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
             <!-- ส่วนที่ 1: ฟอร์มเพิ่ม/แก้ไขข้อมูลห้องพัก (4 Columns) -->
             <div class="lg:col-span-4 bg-gray-50/50 p-6 rounded-2xl border border-gray-100 h-fit">
