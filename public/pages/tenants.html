@@ -15,22 +15,31 @@
         <div class="absolute -top-12 -right-12 w-48 h-48 bg-indigo-50 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
     </div>
 
-   <!-- Search Section -->
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center gap-3">
-        <div class="relative flex-1 w-full">
+    <!-- 🔍 Search & Filter Bar  -->
+    <div class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="relative w-full sm:w-96">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
+                🔍
             </div>
-            <input type="text" id="searchTenantInput" onkeyup="filterTenants()" placeholder="ค้นหาชื่อ, ชื่อเล่น, เบอร์โทร, LINE ID หรือเลขบัตร..." class="block w-full pl-10 pr-4 py-2.5 rounded-xl border-gray-200 bg-gray-50 focus:bg-white shadow-sm border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors">
+            <input type="text" 
+                   id="searchTenantInput" 
+                   oninput="filterTenants()" 
+                   placeholder="ค้นหาชื่อผู้เช่า, ชื่อเล่น, เบอร์โทร, เลขห้องพัก, LINE ID..." 
+                   class="block w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-xs">
+            <button type="button" 
+                    onclick="clearTenantSearch()" 
+                    id="clearSearchBtn"
+                    class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                ✖
+            </button>
         </div>
-        <button onclick="filterTenants()" class="w-full sm:w-auto inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-indigo-200 transition-all transform hover:-translate-y-0.5 gap-2 shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-            </svg>
-            <span>ค้นหา</span>
-        </button>
+        
+        <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 self-end sm:self-auto">
+            <span>พบผู้เช่าทั้งหมด:</span>
+            <span id="tenant-count-badge" class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full border border-indigo-100 font-extrabold text-sm">
+                0 คน
+            </span>
+        </div>
     </div>
 
     <!-- Tenant Cards Grid -->
