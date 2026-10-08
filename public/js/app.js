@@ -2780,26 +2780,48 @@ async function fetchTenants() {
     }
 }
 
-// 3. ฟังก์ชันค้นหาและกรองข้อมูลผู้เช่า
+// 🔍 ฟังก์ชันกรอง/ค้นหาผู้เช่า (โดยไม่แก้ grid.innerHTML)
 function filterTenants() {
-    const searchKeyword = (document.getElementById('searchTenantInput')?.value || '').toLowerCase().trim();
+    const input = document.getElementById('searchTenantInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    const keyword = (input ? input.value : '').toLowerCase().trim();
 
-    if (!searchKeyword) {
-        renderTenants(currentTenants);
-        return;
+    // 1. ควบคุมการแสดงผลปุ่มล้างคำค้นหา (✖)
+    if (clearBtn) {
+        if (keyword) {
+            clearBtn.classList.remove('hidden');
+        } else {
+            clearBtn.classList.add('hidden');
+        }
     }
 
-    const filtered = currentTenants.filter(t => {
-        const nameMatch = (t.name || '').toLowerCase().includes(searchKeyword);
-        const nicknameMatch = (t.nickname || '').toLowerCase().includes(searchKeyword);
-        const phoneMatch = (t.phone || '').toLowerCase().includes(searchKeyword);
-        const lineMatch = (t.line_id || '').toLowerCase().includes(searchKeyword);
-        const idCardMatch = (t.id_card || '').toLowerCase().includes(searchKeyword);
+    // 2. ดึงการ์ดผู้เช่าทุกใบที่อยู่ใน #tenant-grid
+    const cards = document.querySelectorAll('#tenant-grid > div');
 
-        return nameMatch || nicknameMatch || phoneMatch || lineMatch || idCardMatch;
+    // 3. วนลูปเช็คข้อความภายในการ์ดแต่ละใบ
+    cards.forEach(card => {
+        // ข้าม element แจ้งเตือนกรณีไม่มีข้อมูล (ถ้ามี)
+        if (card.classList.contains('col-span-full')) return;
+
+        // ดึงข้อความทั้งหมดในการ์ด (รวม ชื่อ, ชื่อเล่น, เบอร์โทร, เลขห้อง, LINE ID)
+        const text = card.textContent.toLowerCase();
+
+        // แสดงหรือซ่อนการ์ดตามคำค้นหา
+        if (!keyword || text.includes(keyword)) {
+            card.style.display = ''; // แสดงการ์ดกลับตามปกติ
+        } else {
+            card.style.display = 'none'; // ซ่อนการ์ดที่ไม่ตรงกับคำค้นหา
+        }
     });
+}
 
-    renderTenants(filtered);
+// ✖️ ฟังก์ชันล้างคำค้นหาผู้เช่า
+function clearTenantSearch() {
+    const input = document.getElementById('searchTenantInput');
+    if (input) {
+        input.value = '';
+        filterTenants();
+    }
 }
 
 async function fetchLineFriendsForTenant() {
