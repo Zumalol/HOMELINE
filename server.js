@@ -1497,7 +1497,6 @@ app.post('/webhook', async (req, res) => {
                         const buffer = Buffer.from(imageBuffer);
                         
                         try {
-                            // อัปโหลดขึ้น Cloudinary ด้วยฟังก์ชันที่มีอยู่แล้ว
                             const uploadResult = await uploadBufferToCloudinary(buffer, 'repair_images');
                             repairState.images.push(uploadResult.secure_url);
                             pendingRepairs.set(userId, repairState);
@@ -1527,7 +1526,6 @@ app.post('/webhook', async (req, res) => {
                 else {
                     const pendingBill = pendingSlipBills.get(event.source.userId) || '';
                     
-                    // ดึงรูปภาพจาก LINE API
                     const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
                         headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
                     });
@@ -1537,31 +1535,172 @@ app.post('/webhook', async (req, res) => {
                         const formData = new FormData();
                         formData.append('files', new Blob([imageBuffer], { type: 'image/jpeg' }), 'slip.jpg');
                     
+                        const slipRes = await fetch(`https://api.slipok.com/api/line/apikey/${process.env.SLIPOK_BRANCH_ID}`, {
+                            method: 'POST',
+                            headers: { 'x-authorization': process.env.SLIP_OK_API_KEY },
+                            body: formData
+                        });
+                        const slipResult = await slipRes.json();
 
-                    // ส่งรูปไปตรวจที่ SlipOK
-                    const slipRes = await fetch(`https://api.slipok.com/api/line/apikey/${process.env.SLIPOK_BRANCH_ID}`, {
-                        method: 'POST',
-                        headers: { 'x-authorization': process.env.SLIP_OK_API_KEY },
-                        body: formData
-                    });
-                    const slipResult = await slipRes.json();
+                        let replyText = '';
+                        let adminNotifyText = '';
+                        const data = slipResult.data || {};
+                        const senderName = data.sender?.displayName || 'ไม่ระบุชื่อ';
+                        const amount = data.amount || 0;
 
-                    // เตรียมข้อความและดึงข้อมูลออกมาใน Scope ด้านนอก
-                    let replyText = '';
-                    let adminNotifyText = '';
-                    const data = slipResult.data || {};
-                    const senderName = data.sender?.displayName || 'ไม่ระบุชื่อ';
-                    const amount = data.amount || 0;
+                        if (slipRes.ok && slipResult.success) {
+                            replyText = '✅ ตรวจสอบสลิปสำเร็จ! ระบบได้ส่งข้อมูลให้เจ้าของหอยืนยันเรียบร้อยครับ';
+                            adminNotifyText = `📢 มีการชำระเงินผ่าน LINE Bot!\nผู้โอน: ${senderName}\nยอดเงิน: ${amount} บาท\n\n✅ สลิปถูกต้อง (ตรวจสอบโดย SlipOK)\nฝากเจ้าของหอยืนยันอีกครั้งครับ`;
+                        } else {
+                            replyText = '❌ สลิปไม่ถูกต้อง หรือถูกใช้ซ้ำแล้ว กรุณาตรวจสอบอีกครั้งครับ';
+                            adminNotifyText = `⚠️ แจ้งเตือนสลิปมีปัญหาจากผู้เช่า!\nผลการตรวจสอบ: ❌ ${slipResult.message || 'สลิปไม่ถูกต้อง'}`;
+                        }
 
-                    if (slipRes.ok && slipResult.success) {
-                        replyText = '✅ ตรวจสอบสลิปสำเร็จ! ระบบได้ส่งข้อมูลให้เจ้าของหอยืนยันเรียบร้อยครับ';
-                        adminNotifyText = `📢 มีการชำระเงินผ่าน LINE Bot!\nผู้โอน: ${senderName}\nยอดเงิน: ${amount} บาท\n\n✅ สลิปถูกต้อง (ตรวจสอบโดย SlipOK)\nฝากเจ้าของหอยืนยันอีกครั้งครับ`;
-                    } else {
-                        replyText = '❌ สลิปไม่ถูกต้อง หรือถูกใช้ซ้ำแล้ว กรุณาตรวจสอบอีกครั้งครับ';
-                        adminNotifyText = `⚠️ แจ้งเตือนสลิปมีปัญหาจากผู้เช่า!\nผลการตรวจสอบ: ❌ ${slipResult.message || 'สลิปไม่ถูกต้อง'}`;
+                        await fetch('https://api.line.me/v2/bot/message/reply', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                            },
+                            body: JSON.stringify({
+                                replyToken: event.replyToken,
+                                messages: [{ type: 'text', text: replyText }]
+                            })
+                        });
+
+                        const adminLineId = process.env.ADMIN_LINE_ID;
+                        if (adminLineId) {
+                            if (slipRes.ok && slipResult.success) {
+                                const flexMessage = {
+                                    type: "flex",
+                                    altText: "มีการส่งสลิปใหม่ รอการยืนยัน",
+                                    contents: {
+                                        type: "bubble",
+                                        body: {
+                                            type: "box",
+                                            layout: "vertical",
+                                            contents: [
+                                                { type: "text", text: "📢 แจ้งเตือนชำระเงินใหม่", weight: "bold", size: "xl", color: "#1f2937" },
+                                                { type: "text", text: `ผู้โอน: ${senderName}`, margin: "md", color: "#4b5563" },
+                                                { type: "text", text: `ยอดเงิน: ${amount} บาท`, color: "#4b5563" },
+                                                { type: "text", text: "✅ สลิปถูกต้อง (SlipOK)", color: "#10b981", margin: "md", weight: "bold" }
+                                            ]
+                                        },
+                                        footer: {
+                                            type: "box",
+                                            layout: "vertical",
+                                            contents: [
+                                                {
+                                                    type: "button",
+                                                    style: "primary",
+                                                    color: "#4f46e5",
+                                                    action: {
+                                                        type: "postback",
+                                                        label: "✅ ยืนยันรับยอด",
+                                                        data: `action=confirm_slip&userId=${event.source.userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                };
+
+                                await fetch('https://api.line.me/v2/bot/message/push', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                                    },
+                                    body: JSON.stringify({
+                                        to: adminLineId,
+                                        messages: [flexMessage]
+                                    })
+                                });
+                            } else {
+                                await fetch('https://api.line.me/v2/bot/message/push', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                                    },
+                                    body: JSON.stringify({
+                                        to: adminLineId,
+                                        messages: [{ type: 'text', text: adminNotifyText }]
+                                    })
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
+            if (event.type === 'postback') {
+                const postbackData = event.postback?.data || '';
+                const params = new URLSearchParams(postbackData);
+                const action = params.get('action');
+
+                if (action === 'confirm_slip') {
+                    const tenantId = params.get('userId');
+                    const amount = params.get('amount') || '0';
+                    const billName = params.get('billName');
+
+                    if (tenantId) {
+                        try {
+                            // 1. ค้นหาห้องพัก (รองรับทั้งจับคู่ผ่านชื่อผู้เช่า และหมายเลขห้อง)
+                            let roomRes = await pool.query(`
+                                SELECT r.id, r.number
+                                FROM rooms r
+                                JOIN tenants t ON (r.tenant = t.name OR r.number = t.room_number)
+                                WHERE t.line_id = $1 LIMIT 1
+                            `, [tenantId]);
+
+                            // Fallback หาตรงจากตาราง rooms หากเก็บ line_id ในตาราง rooms
+                            if (roomRes.rows.length === 0) {
+                                roomRes = await pool.query(`SELECT id, number FROM rooms WHERE line_id = $1 LIMIT 1`, [tenantId]);
+                            }
+
+                            if (roomRes.rows.length > 0) {
+                                const room = roomRes.rows[0];
+
+                                if (billName && billName !== 'null' && billName !== 'undefined' && billName !== '') {
+                                    // 2. ดึงตัวเลข ID บิล (รองรับทั้ง "12", "#12", "bill_12")
+                                    const billIdMatch = billName.match(/\d+/);
+                                    if (billIdMatch) {
+                                        const billId = billIdMatch[0];
+                                        await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
+                                    } else {
+                                        const filePath = path.join(__dirname, 'public', 'exports', billName);
+                                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                                    }
+
+                                    // 3. ตรวจสอบว่ายังมีบิลค้างชำระอื่นอีกหรือไม่
+                                    const remainingBillsRes = await pool.query(`
+                                        SELECT id FROM bills 
+                                        WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                    `, [room.number]);
+
+                                    if (remainingBillsRes.rows.length === 0) {
+                                        await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
+                                    }
+
+                                    if (typeof pendingSlipBills !== 'undefined') {
+                                        pendingSlipBills.delete(tenantId);
+                                    }
+                                } else {
+                                    // กรณีไม่มีชื่อบิลเฉพาะเจาะจง ให้เปลี่ยนสถานะทั้งหมดของห้อง
+                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
+                                    await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
+                                }
+                            } else {
+                                console.warn(`[Confirm Slip] ไม่พบข้อมูลห้องพักของ tenantId: ${tenantId}`);
+                            }
+                        } catch (err) {
+                            console.error('Update Payment Status Error:', err);
+                        }
                     }
 
-                    // ส่งข้อความตอบกลับผู้เช่า
+                    // ตอบกลับแอดมินที่กดปุ่ม
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
@@ -1570,170 +1709,25 @@ app.post('/webhook', async (req, res) => {
                         },
                         body: JSON.stringify({
                             replyToken: event.replyToken,
-                            messages: [{ type: 'text', text: replyText }]
+                            messages: [{ type: 'text', text: `✅ คุณได้ยืนยันรับยอด ${amount} บาท เรียบร้อยแล้ว (ระบบกำลังแจ้งผู้เช่า)` }]
                         })
                     });
 
-                    // ส่งแจ้งเตือนให้เจ้าของหอ (Admin)
-                    const adminLineId = process.env.ADMIN_LINE_ID;
-                    if (adminLineId) {
-                        if (slipRes.ok && slipResult.success) {
-                            // กรณีสลิปถูกต้อง: ส่ง Flex Message พร้อมปุ่มกดยืนยัน
-                            const flexMessage = {
-                                type: "flex",
-                                altText: "มีการส่งสลิปใหม่ รอการยืนยัน",
-                                contents: {
-                                    type: "bubble",
-                                    body: {
-                                        type: "box",
-                                        layout: "vertical",
-                                        contents: [
-                                            { type: "text", text: "📢 แจ้งเตือนชำระเงินใหม่", weight: "bold", size: "xl", color: "#1f2937" },
-                                            { type: "text", text: `ผู้โอน: ${senderName}`, margin: "md", color: "#4b5563" },
-                                            { type: "text", text: `ยอดเงิน: ${amount} บาท`, color: "#4b5563" },
-                                            { type: "text", text: "✅ สลิปถูกต้อง (SlipOK)", color: "#10b981", margin: "md", weight: "bold" }
-                                        ]
-                                    },
-                                    footer: {
-                                        type: "box",
-                                        layout: "vertical",
-                                        contents: [
-                                            {
-                                                type: "button",
-                                                style: "primary",
-                                                color: "#4f46e5",
-                                                action: {
-                                                    type: "postback",
-                                                    label: "✅ ยืนยันรับยอด",
-                                                    // ส่ง billName แนบไปให้ Admin ยืนยันเฉพาะใบนั้น
-                                                    data: `action=confirm_slip&userId=${event.source.userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
-                                                }
-                                            }
-                                        ]
-                                    }
-                                }
-                            };
-
-                            await fetch('https://api.line.me/v2/bot/message/push', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                                },
-                                body: JSON.stringify({
-                                    to: adminLineId,
-                                    messages: [flexMessage]
-                                })
-                            });
-                        } else {
-                            // กรณีสลิปมีปัญหา: ส่ง ข้อความแจ้งเตือนปัญหาสลิป
-                            await fetch('https://api.line.me/v2/bot/message/push', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                                },
-                                body: JSON.stringify({
-                                    to: adminLineId,
-                                    messages: [{ type: 'text', text: adminNotifyText }]
-                                })
-                            });
-                        }
+                    // ส่ง Push Notification แจ้งผู้เช่า
+                    if (tenantId) {
+                        await fetch('https://api.line.me/v2/bot/message/push', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                            },
+                            body: JSON.stringify({
+                                to: tenantId,
+                                messages: [{ type: 'text', text: `🎉 เจ้าของหอยืนยันการรับยอดชำระเงินจำนวน ${amount} บาท ของคุณเรียบร้อยแล้ว ขอบคุณครับ` }]
+                            })
+                        });
                     }
                 }
-            }
-        }
-
-           // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
-        if (event.type === 'postback') {
-            const postbackData = event.postback?.data || '';
-            const params = new URLSearchParams(postbackData);
-            
-            // แก้ไข: ดึงค่าจาก params แทน postbackData
-            const action = params.get('action');
-
-            if (action === 'confirm_slip') {
-                const tenantId = params.get('userId');
-                const amount = params.get('amount') || '0';
-                const billName = params.get('billName'); // รับค่าชื่อบิล
-                
-                if (tenantId) {
-                    try {
-                        const roomRes = await pool.query(`
-                            SELECT r.id, r.number
-                            FROM rooms r
-                            JOIN tenants t ON r.tenant = t.name
-                            WHERE t.line_id = $1 LIMIT 1
-                        `, [tenantId]);
-
-                        if (roomRes.rows.length > 0) {
-                            const room = roomRes.rows[0];
-                            
-                            // กรณีเลือกชำระแบบเจาะจงบิล
-                            if (billName && billName !== 'null' && billName !== '') {
-                                // 1. อัปเดตสถานะบิลใบนั้นในตาราง bills เป็น 'ชำระเงินแล้ว'
-                                const billIdMatch = billName.match(/#(\d+)/);
-                                if (billIdMatch) {
-                                    const billId = billIdMatch[1];
-                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
-                                } else {
-                                    const filePath = path.join(__dirname, 'public', 'exports', billName);
-                                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
-                                }
-
-                                // 2. เช็คว่ายังเหลือบิลใบอื่นของห้องนี้ค้างอยู่อีกหรือไม่
-                                const remainingBillsRes = await pool.query(`
-                                    SELECT * FROM bills 
-                                    WHERE room_number = $1 AND status = 'ค้างชำระ'
-                                `, [room.number]);
-
-                                // 3. ถ้าไม่เหลือบิลค้างชำระแล้ว ให้เปลี่ยนสถานะห้องพักเป็น 'ชำระเงินแล้ว'
-                                if (remainingBillsRes.rows.length === 0) {
-                                    await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
-                                }
-                                
-                                if (typeof pendingSlipBills !== 'undefined') {
-                                    pendingSlipBills.delete(tenantId);
-                                }
-                            } else {
-                                // การยืนยันแบบปกติ
-                                await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
-                                await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
-                            }
-                        }
-                    } catch (err) {
-                        console.error('Update Payment Status Error:', err);
-                    }
-                }
-
-                // 2. แจ้งแอดมิน 
-                await fetch('https://api.line.me/v2/bot/message/reply', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                    },
-                    body: JSON.stringify({
-                        replyToken: event.replyToken,
-                        messages: [{ type: 'text', text: `✅ คุณได้ยืนยันรับยอด ${amount} บาท เรียบร้อยแล้ว (ระบบกำลังแจ้งผู้เช่า)` }]
-                    })
-                });
-
-                // 3. แจ้งเตือนผู้เช่าทาง Push Message
-                if (tenantId) {
-                    await fetch('https://api.line.me/v2/bot/message/push', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                        },
-                        body: JSON.stringify({
-                            to: tenantId,
-                            messages: [{ type: 'text', text: `🎉 เจ้าของหอยืนยันการรับยอดชำระเงินจำนวน ${amount} บาท ของคุณเรียบร้อยแล้ว ขอบคุณครับ` }]
-                        })
-                    });
-                }
-            }
             }
         }
         res.status(200).send('OK');
