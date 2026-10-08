@@ -2780,6 +2780,28 @@ async function fetchTenants() {
     }
 }
 
+// 3. ฟังก์ชันค้นหาและกรองข้อมูลผู้เช่า
+function filterTenants() {
+    const searchKeyword = (document.getElementById('searchTenantInput')?.value || '').toLowerCase().trim();
+
+    if (!searchKeyword) {
+        renderTenants(currentTenants);
+        return;
+    }
+
+    const filtered = currentTenants.filter(t => {
+        const nameMatch = (t.name || '').toLowerCase().includes(searchKeyword);
+        const nicknameMatch = (t.nickname || '').toLowerCase().includes(searchKeyword);
+        const phoneMatch = (t.phone || '').toLowerCase().includes(searchKeyword);
+        const lineMatch = (t.line_id || '').toLowerCase().includes(searchKeyword);
+        const idCardMatch = (t.id_card || '').toLowerCase().includes(searchKeyword);
+
+        return nameMatch || nicknameMatch || phoneMatch || lineMatch || idCardMatch;
+    });
+
+    renderTenants(filtered);
+}
+
 async function fetchLineFriendsForTenant() {
     try {
         const res = await fetch('/api/line-friends');
@@ -2897,7 +2919,8 @@ window.closeTenantModal = closeTenantModal;
 window.saveTenant = saveTenant;
 window.editTenant = openTenantModal;
 window.deleteTenant = deleteTenant;
-
+window.filterTenants = filterTenants;
+window.fetchTenants = fetchTenants;
 
 
 // -----------------------------------------------------
