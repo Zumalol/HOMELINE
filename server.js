@@ -651,7 +651,6 @@ const pendingRepairs = new Map();
 app.post('/webhook', async (req, res) => {
     const signature = req.headers['x-line-signature'];
     
-    
     if (!req.rawBody) {
         return res.status(400).send('No raw body');
     }
@@ -685,10 +684,9 @@ app.post('/webhook', async (req, res) => {
                     `, [userId, profile.displayName]);
                 }
             }
-            // 🟢 ดักจับคำว่า "ตรวจสอบห้องว่าง" และส่งการ์ดรายชื่อห้องว่างกลับไป
-            if (event.type === 'message' && event.message.text === 'ตรวจสอบห้องว่าง') {
-                // ดึงข้อมูลห้องพักที่ "ว่าง" (สถานะไม่ใช่ Occupied และ Booked) 
-                // พร้อม join ชื่อกลุ่มหอพัก (จำกัด 10 ห้อง เพื่อไม่ให้เกินโควตา Carousel ของ LINE)
+
+            // 🟢 ดักจับคำว่า "ตรวจสอบห้องว่าง"
+            if (event.type === 'message' && event.message.type === 'text' && event.message.text === 'ตรวจสอบห้องว่าง') {
                 const roomsResult = await pool.query(`
                     SELECT r.*, d.name as dormitory_name 
                     FROM rooms r
@@ -707,7 +705,7 @@ app.post('/webhook', async (req, res) => {
                             header: {
                                 type: "box",
                                 layout: "vertical",
-                                backgroundColor: "#4f46e5", // ตกแต่งหัวการ์ดด้วยสี Indigo 
+                                backgroundColor: "#4f46e5",
                                 paddingAll: "xl",
                                 contents: [
                                     { type: "text", text: `ห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "xl" },
@@ -748,7 +746,7 @@ app.post('/webhook', async (req, res) => {
                                         style: "primary",
                                         color: "#4f46e5",
                                         action: {
-                                            type: "message", // กดแล้วระบบจะพิมพ์ข้อความส่งกลับอัตโนมัติ
+                                            type: "message",
                                             label: "ดูรายละเอียด / สนใจห้องนี้",
                                             text: `สนใจรายละเอียดห้อง ${room.number}`
                                         }
@@ -757,7 +755,6 @@ app.post('/webhook', async (req, res) => {
                             }
                         };
 
-                        // หากมีรูปภาพและเป็น URL จะนำมาแสดงเป็นรูปหน้าปกการ์ด
                         if (room.image_data && room.image_data.startsWith('http')) {
                             bubble.hero = {
                                 type: "image",
@@ -771,7 +768,6 @@ app.post('/webhook', async (req, res) => {
                         return bubble;
                     });
 
-                    // ส่งกลับเป็น Flex Message แบบ Carousel (หากมีหลายห้องจะปัดซ้ายขวาได้)
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
@@ -783,15 +779,11 @@ app.post('/webhook', async (req, res) => {
                             messages: [{
                                 type: "flex",
                                 altText: "รายการห้องว่าง",
-                                contents: {
-                                    type: "carousel",
-                                    contents: flexContents
-                                }
+                                contents: { type: "carousel", contents: flexContents }
                             }]
                         })
                     });
                 } else {
-                    // กรณีไม่มีห้องว่างเลย
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
@@ -805,9 +797,9 @@ app.post('/webhook', async (req, res) => {
                     });
                 }
             }
-            // 🟢 ดักจับคำว่า "สนใจรายละเอียดห้อง ${room.number}" (เช่น "สนใจรายละเอียดห้อง 101")
+
+            // 🟢 ดักจับคำว่า "สนใจรายละเอียดห้อง..."
             const roomDetailMatch = event.message && event.message.type === 'text' && event.message.text.match(/^สนใจรายละเอียดห้อง\s*(.+)$/);
-            
             if (roomDetailMatch) {
                 const roomNumber = roomDetailMatch[1].trim();
 
@@ -821,7 +813,6 @@ app.post('/webhook', async (req, res) => {
                 if (roomResult.rows.length > 0) {
                     const room = roomResult.rows[0];
 
-                    // ตรวจหาจำนวนรูปภาพทั้งหมดใน DB
                     let imageCount = 0;
                     if (room.image_data) {
                         try {
@@ -896,7 +887,6 @@ app.post('/webhook', async (req, res) => {
                         }
                     };
 
-                    // ถ้ามีรูปภาพ ให้เพิ่มปุ่ม "ดูรูปภาพทั้งหมด"
                     if (imageCount > 0) {
                         flexContents.footer.contents.push({
                             type: "button",
@@ -910,7 +900,6 @@ app.post('/webhook', async (req, res) => {
                         });
                     }
 
-                    // ปุ่มจองห้อง
                     flexContents.footer.contents.push({
                         type: "button",
                         style: "primary",
@@ -922,7 +911,6 @@ app.post('/webhook', async (req, res) => {
                         }
                     });
 
-                    // รูปหน้าปก
                     if (room.image_data) {
                         const host = req.get('host');
                         flexContents.hero = {
@@ -973,9 +961,8 @@ app.post('/webhook', async (req, res) => {
                 }
             }
 
-            // 🟢 ดักจับคำว่า "ดูรูปภาพห้อง ${room.number}" (เมื่อกดปุ่มดูรูปภาพทั้งหมด)
+            // 🟢 ดักจับคำว่า "ดูรูปภาพห้อง..."
             const roomPhotosMatch = event.message && event.message.type === 'text' && event.message.text.match(/^ดูรูปภาพห้อง\s*(.+)$/);
-
             if (roomPhotosMatch) {
                 const roomNumber = roomPhotosMatch[1].trim();
 
@@ -994,8 +981,6 @@ app.post('/webhook', async (req, res) => {
                     }
 
                     const host = req.get('host');
-                    
-                    // สร้างสไลด์การ์ด (Carousel) ตามจำนวนรูปภาพที่มี
                     const carouselContents = imagesList.map((_, idx) => {
                         const imageUrl = `https://${host}${apiPrefix}/rooms/${room.id}/image?index=${idx}`;
                         return {
@@ -1042,10 +1027,7 @@ app.post('/webhook', async (req, res) => {
                             messages: [{
                                 type: "flex",
                                 altText: `อัลบั้มรูปภาพห้อง ${room.number}`,
-                                contents: {
-                                    type: "carousel",
-                                    contents: carouselContents
-                                }
+                                contents: { type: "carousel", contents: carouselContents }
                             }]
                         })
                     });
@@ -1063,8 +1045,7 @@ app.post('/webhook', async (req, res) => {
                     });
                 }
             }
-            
-           
+
             // 🟢 ดักจับคำว่า "ตรวจสอบบิลค้างชำระ"
             if (event.type === 'message' && event.message.type === 'text' && event.message.text === 'ตรวจสอบบิลค้างชำระ') {
                 const userId = event.source.userId;
@@ -1094,7 +1075,6 @@ app.post('/webhook', async (req, res) => {
 
                     const room = roomRes.rows[0];
 
-                    // ดึงบิลค้างชำระจาก PostgreSQL แทนการอ่านจากโฟลเดอร์ local
                     const billsRes = await pool.query(`
                         SELECT * FROM bills 
                         WHERE room_number = $1 AND status = 'ค้างชำระ' 
@@ -1145,12 +1125,13 @@ app.post('/webhook', async (req, res) => {
                             paddingAll: "md",
                             contents: [
                                 { type: "text", text: "สถานะ: ⏳ ค้างชำระ", color: "#ef4444", weight: "bold", size: "md", align: "center" },
-                                {type: "box", layout: "vertical", paddingAll: "sm",
-                                contents: [{
-                                    type: "button", style: "primary", color: "#3b82f6",
-                                    action: { type: "message", label: "เลือกชำระบิลนี้", text: `แจ้งชำระบิล #${bill.id}` }
-                                }]
-                            }
+                                {
+                                    type: "box", layout: "vertical", paddingAll: "sm",
+                                    contents: [{
+                                        type: "button", style: "primary", color: "#3b82f6",
+                                        action: { type: "message", label: "เลือกชำระบิลนี้", text: `แจ้งชำระบิล #${bill.id}` }
+                                    }]
+                                }
                             ]
                         }
                     }));
@@ -1175,12 +1156,12 @@ app.post('/webhook', async (req, res) => {
                     console.error('Check Bills Error:', error);
                 }
             }
+
             // 🟢 ดักจับคำว่า "ชำระเงินทั้งหมด"
             if (event.type === 'message' && event.message.type === 'text' && event.message.text === 'ชำระเงินทั้งหมด') {
                 const userId = event.source.userId;
 
                 try {
-                    // ค้นหาห้องจาก line_id
                     const roomRes = await pool.query(`
                         SELECT r.* 
                         FROM rooms r
@@ -1199,7 +1180,6 @@ app.post('/webhook', async (req, res) => {
 
                     const room = roomRes.rows[0];
 
-                    // ดึงบิลค้างชำระจาก PostgreSQL ตาราง bills
                     const billsRes = await pool.query(`
                         SELECT * FROM bills 
                         WHERE room_number = $1 AND status = 'ค้างชำระ' 
@@ -1272,7 +1252,6 @@ app.post('/webhook', async (req, res) => {
                     const billIdMatch = billName.match(/#(\d+)/);
                     if (billIdMatch) {
                         const billId = billIdMatch[1];
-                        // 🟢 ดึง bill_data จากตาราง bills ของบิลใบนั้นโดยตรง
                         const billRes = await pool.query('SELECT room_number, bill_data FROM bills WHERE id = $1', [billId]);
                         
                         if (billRes.rows.length > 0) {
@@ -1281,7 +1260,6 @@ app.post('/webhook', async (req, res) => {
                             if (billRes.rows[0].bill_data) {
                                 billData = JSON.parse(billRes.rows[0].bill_data);
                             } else {
-                                // Fallback: สำหรับบิลเก่าที่ยังไม่มี bill_data ให้ดึงจากตาราง rooms
                                 const roomRes = await pool.query('SELECT last_bill_data FROM rooms WHERE number = $1', [billRes.rows[0].room_number]);
                                 if (roomRes.rows.length > 0 && roomRes.rows[0].last_bill_data) {
                                     billData = JSON.parse(roomRes.rows[0].last_bill_data);
@@ -1304,7 +1282,6 @@ app.post('/webhook', async (req, res) => {
                         }
                     }
 
-                    // 🟢 FALLBACK: ถ้าในข้อมูลบิลไม่มีรายละเอียดธนาคาร ให้ดึงบัญชีล่าสุดจากตาราง payment_accounts
                     if (bankName === '-' || accNo === '-') {
                         const defaultAccRes = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC LIMIT 1');
                         if (defaultAccRes.rows.length > 0) {
@@ -1370,121 +1347,115 @@ app.post('/webhook', async (req, res) => {
                 });
             }
 
-            // 🟢 ดักจับระบบแจ้งซ่อม (ข้อความและการยืนยัน)
-            const text = event.message.text;
-            const userId = event.source.userId;
+            // 🟢 ดักจับระบบแจ้งซ่อม (เช็คประเภท Event และข้อความ เพื่อป้องกันการเกิด Error)
+            if (event.type === 'message' && event.message.type === 'text') {
+                const text = event.message.text;
+                const userId = event.source.userId;
 
-            if (text === 'แจ้งซ่อม') {
-                try {
-                    // หาห้องพักจาก line_id
-                    const roomRes = await pool.query(`
-                        SELECT r.* FROM rooms r
-                        JOIN tenants t ON r.tenant = t.name
-                        WHERE t.line_id = $1
-                    `, [userId]);
+                if (text === 'แจ้งซ่อม') {
+                    try {
+                        const roomRes = await pool.query(`
+                            SELECT r.* FROM rooms r
+                            JOIN tenants t ON r.tenant = t.name
+                            WHERE t.line_id = $1
+                        `, [userId]);
 
-                    if (roomRes.rows.length === 0) {
+                        if (roomRes.rows.length === 0) {
+                            await fetch('https://api.line.me/v2/bot/message/reply', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                                body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ไม่พบข้อมูลห้องพักที่ผูกกับบัญชี LINE ของคุณครับ' }] })
+                            });
+                            return;
+                        }
+
+                        pendingRepairs.set(userId, { 
+                            roomNumber: roomRes.rows[0].number,
+                            tenantName: roomRes.rows[0].tenant, 
+                            description: '',
+                            images: [], 
+                            step: 'AWAITING_DESC' 
+                        });
+
                         await fetch('https://api.line.me/v2/bot/message/reply', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
-                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ไม่พบข้อมูลห้องพักที่ผูกกับบัญชี LINE ของคุณครับ' }] })
+                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: `🛠️ แจ้งซ่อมห้อง ${roomRes.rows[0].number}\nกรุณาพิมพ์ "รายละเอียด" หรือ "อาการ" ที่ต้องการแจ้งซ่อมได้เลยครับ` }] })
+                        });
+                        return;
+                    } catch (error) {
+                        console.error('Repair Init Error:', error);
+                    }
+                }
+
+                if (pendingRepairs.has(userId)) {
+                    const repairState = pendingRepairs.get(userId);
+
+                    if (text === 'ยกเลิกการแจ้งซ่อม') {
+                        pendingRepairs.delete(userId);
+                        await fetch('https://api.line.me/v2/bot/message/reply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ยกเลิกรายการแจ้งซ่อมเรียบร้อยครับ' }] })
                         });
                         return;
                     }
 
-                    // เริ่มต้นสถานะรอรายละเอียด
-                    pendingRepairs.set(userId, { 
-                        roomNumber: roomRes.rows[0].number,
-                        tenantName: roomRes.rows[0].tenant, 
-                        description: '',
-                        images: [], 
-                        step: 'AWAITING_DESC' 
-                    });
+                    if (repairState.step === 'AWAITING_DESC') {
+                        repairState.description = text;
+                        repairState.step = 'AWAITING_IMAGES';
+                        pendingRepairs.set(userId, repairState);
 
-                    await fetch('https://api.line.me/v2/bot/message/reply', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
-                        body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: `🛠️ แจ้งซ่อมห้อง ${roomRes.rows[0].number}\nกรุณาพิมพ์ "รายละเอียด" หรือ "อาการ" ที่ต้องการแจ้งซ่อมได้เลยครับ` }] })
-                    });
-                    return;
-                } catch (error) {
-                    console.error('Repair Init Error:', error);
-                }
-            }
+                        const quickReplyMessage = {
+                            type: 'text',
+                            text: `รับทราบครับ อาการคือ: "${text}"\n📸 หากมีรูปภาพประกอบสามารถ "ส่งรูปภาพ" มาได้เลยครับ\n\n✅ หากไม่มี หรือส่งรูปครบแล้ว ให้กดปุ่ม "ยืนยันการแจ้งซ่อม" ด้านล่างนี้ครับ`,
+                            quickReply: {
+                                items: [
+                                    { type: 'action', action: { type: 'message', label: 'ยืนยันการแจ้งซ่อม', text: 'ยืนยันการแจ้งซ่อม' } },
+                                    { type: 'action', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิกการแจ้งซ่อม' } }
+                                ]
+                            }
+                        };
 
-            // จัดการสนทนาต่อหากอยู่ในสถานะแจ้งซ่อม
-            if (pendingRepairs.has(userId)) {
-                const repairState = pendingRepairs.get(userId);
-
-                if (text === 'ยกเลิกการแจ้งซ่อม') {
-                    pendingRepairs.delete(userId);
-                    await fetch('https://api.line.me/v2/bot/message/reply', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
-                        body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '❌ ยกเลิกรายการแจ้งซ่อมเรียบร้อยครับ' }] })
-                    });
-                    return;
-                }
-
-                if (repairState.step === 'AWAITING_DESC') {
-                    repairState.description = text;
-                    repairState.step = 'AWAITING_IMAGES';
-                    pendingRepairs.set(userId, repairState);
-
-                    // สร้าง Quick Reply ให้กดส่งรูปหรือยืนยัน
-                    const quickReplyMessage = {
-                        type: 'text',
-                        text: `รับทราบครับ อาการคือ: "${text}"\n📸 หากมีรูปภาพประกอบสามารถ "ส่งรูปภาพ" มาได้เลยครับ\n\n✅ หากไม่มี หรือส่งรูปครบแล้ว ให้กดปุ่ม "ยืนยันการแจ้งซ่อม" ด้านล่างนี้ครับ`,
-                        quickReply: {
-                            items: [
-                                { type: 'action', action: { type: 'message', label: 'ยืนยันการแจ้งซ่อม', text: 'ยืนยันการแจ้งซ่อม' } },
-                                { type: 'action', action: { type: 'message', label: 'ยกเลิก', text: 'ยกเลิกการแจ้งซ่อม' } }
-                            ]
-                        }
-                    };
-
-                    await fetch('https://api.line.me/v2/bot/message/reply', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
-                        body: JSON.stringify({ replyToken: event.replyToken, messages: [quickReplyMessage] })
-                    });
-                    return;
-                }
-
-                if (repairState.step === 'AWAITING_IMAGES' && text === 'ยืนยันการแจ้งซ่อม') {
-                    // บันทึกลงฐานข้อมูล
-                    const imagesJson = JSON.stringify(repairState.images);
-                    try {
-                        await pool.query(
-                            `INSERT INTO repairs (room_number, issue, image_url, tenant_name) VALUES ($1, $2, $3, $4)`,
-                            [repairState.roomNumber, repairState.description, imagesJson, repairState.tenantName]
-                        );
-                        pendingRepairs.delete(userId);
-        
                         await fetch('https://api.line.me/v2/bot/message/reply', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
-                            body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ บันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้ว แอดมินจะรีบตรวจสอบให้ครับ' }] })
+                            body: JSON.stringify({ replyToken: event.replyToken, messages: [quickReplyMessage] })
                         });
-                        
-                        // (ตัวเลือกเสริม) แจ้งเตือนแอดมิน 
-                        if (process.env.ADMIN_LINE_ID) {
-                           await sendLinePushMessage(process.env.ADMIN_LINE_ID, `📢 มีแจ้งซ่อมใหม่!\nห้อง: ${repairState.roomNumber}\nรายละเอียด: ${repairState.description}\nรูปภาพ: ${repairState.images.length} รูป\nชื่อผู้เช่า: ${repairState.tenantName}`);
-                        }
-                    } catch (err) {
-                        console.error('Save Repair Error:', err);
+                        return;
                     }
-                    return;
+
+                    if (repairState.step === 'AWAITING_IMAGES' && text === 'ยืนยันการแจ้งซ่อม') {
+                        const imagesJson = JSON.stringify(repairState.images);
+                        try {
+                            await pool.query(
+                                `INSERT INTO repairs (room_number, issue, image_url, tenant_name) VALUES ($1, $2, $3, $4)`,
+                                [repairState.roomNumber, repairState.description, imagesJson, repairState.tenantName]
+                            );
+                            pendingRepairs.delete(userId);
+            
+                            await fetch('https://api.line.me/v2/bot/message/reply', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+                                body: JSON.stringify({ replyToken: event.replyToken, messages: [{ type: 'text', text: '✅ บันทึกข้อมูลการแจ้งซ่อมเรียบร้อยแล้ว แอดมินจะรีบตรวจสอบให้ครับ' }] })
+                            });
+                            
+                            if (process.env.ADMIN_LINE_ID) {
+                               await sendLinePushMessage(process.env.ADMIN_LINE_ID, `📢 มีแจ้งซ่อมใหม่!\nห้อง: ${repairState.roomNumber}\nรายละเอียด: ${repairState.description}\nรูปภาพ: ${repairState.images.length} รูป\nชื่อผู้เช่า: ${repairState.tenantName}`);
+                            }
+                        } catch (err) {
+                            console.error('Save Repair Error:', err);
+                        }
+                        return;
+                    }
                 }
             }
-            
 
-           // 2. ดักจับเมื่อผู้เช่าส่งรูปภาพเข้ามาใน LINE
+            // 2. ดักจับเมื่อผู้เช่าส่งรูปภาพเข้ามาใน LINE
             if (event.type === 'message' && event.message.type === 'image') {
                 const userId = event.source.userId;
                 const messageId = event.message.id;
 
-                // 🟢 กรณี 1: ตรวจสอบว่ากำลังอยู่ในขั้นตอนส่งรูป "แจ้งซ่อม" หรือไม่
                 if (pendingRepairs.has(userId) && pendingRepairs.get(userId).step === 'AWAITING_IMAGES') {
                     const repairState = pendingRepairs.get(userId);
                     
@@ -1521,9 +1492,7 @@ app.post('/webhook', async (req, res) => {
                             console.error('Upload Repair Image Error:', err);
                         }
                     }
-                } 
-                // 🟢 กรณี 2: โฟลว์ปกติ (เช็คสลิปโอนเงินเดิม)
-                else {
+                } else {
                     const pendingBill = pendingSlipBills.get(event.source.userId) || '';
                     
                     const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
@@ -1634,7 +1603,7 @@ app.post('/webhook', async (req, res) => {
                 }
             }
 
-            // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
+            // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยันรับยอด" จาก Flex Message (Postback Event)
             if (event.type === 'postback') {
                 const postbackData = event.postback?.data || '';
                 const params = new URLSearchParams(postbackData);
@@ -1647,7 +1616,6 @@ app.post('/webhook', async (req, res) => {
 
                     if (tenantId) {
                         try {
-                            // 1. ค้นหาห้องพัก (รองรับทั้งจับคู่ผ่านชื่อผู้เช่า และหมายเลขห้อง)
                             let roomRes = await pool.query(`
                                 SELECT r.id, r.number
                                 FROM rooms r
@@ -1655,7 +1623,6 @@ app.post('/webhook', async (req, res) => {
                                 WHERE t.line_id = $1 LIMIT 1
                             `, [tenantId]);
 
-                            // Fallback หาตรงจากตาราง rooms หากเก็บ line_id ในตาราง rooms
                             if (roomRes.rows.length === 0) {
                                 roomRes = await pool.query(`SELECT id, number FROM rooms WHERE line_id = $1 LIMIT 1`, [tenantId]);
                             }
@@ -1664,7 +1631,6 @@ app.post('/webhook', async (req, res) => {
                                 const room = roomRes.rows[0];
 
                                 if (billName && billName !== 'null' && billName !== 'undefined' && billName !== '') {
-                                    // 2. ดึงตัวเลข ID บิล (รองรับทั้ง "12", "#12", "bill_12")
                                     const billIdMatch = billName.match(/\d+/);
                                     if (billIdMatch) {
                                         const billId = billIdMatch[0];
@@ -1674,7 +1640,6 @@ app.post('/webhook', async (req, res) => {
                                         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
                                     }
 
-                                    // 3. ตรวจสอบว่ายังมีบิลค้างชำระอื่นอีกหรือไม่
                                     const remainingBillsRes = await pool.query(`
                                         SELECT id FROM bills 
                                         WHERE room_number = $1 AND status = 'ค้างชำระ'
@@ -1688,7 +1653,6 @@ app.post('/webhook', async (req, res) => {
                                         pendingSlipBills.delete(tenantId);
                                     }
                                 } else {
-                                    // กรณีไม่มีชื่อบิลเฉพาะเจาะจง ให้เปลี่ยนสถานะทั้งหมดของห้อง
                                     await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
                                     await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
                                 }
@@ -1700,7 +1664,6 @@ app.post('/webhook', async (req, res) => {
                         }
                     }
 
-                    // ตอบกลับแอดมินที่กดปุ่ม
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
@@ -1713,7 +1676,6 @@ app.post('/webhook', async (req, res) => {
                         })
                     });
 
-                    // ส่ง Push Notification แจ้งผู้เช่า
                     if (tenantId) {
                         await fetch('https://api.line.me/v2/bot/message/push', {
                             method: 'POST',
