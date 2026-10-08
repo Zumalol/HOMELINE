@@ -1616,18 +1616,14 @@ app.post('/webhook', async (req, res) => {
 
                     if (tenantId) {
                         try {
-                            // 1. ค้นหาข้อมูลห้องพักจาก line_id (รองรับทั้งการผูกที่ตาราง rooms หรือ tenants)
-                            let roomRes = await pool.query(`
+                            // 1. ค้นหาข้อมูลห้องพักจาก line_id ในตาราง tenants
+                            const roomRes = await pool.query(`
                                 SELECT r.id, r.number
                                 FROM rooms r
-                                LEFT JOIN tenants t ON r.tenant = t.name
-                                WHERE t.line_id = $1 OR r.line_id = $1 
+                                JOIN tenants t ON r.tenant = t.name
+                                WHERE t.line_id = $1 
                                 LIMIT 1
                             `, [tenantId]);
-
-                            if (roomRes.rows.length === 0) {
-                                roomRes = await pool.query(`SELECT id, number FROM rooms WHERE line_id = $1 LIMIT 1`, [tenantId]);
-                            }
 
                             if (roomRes.rows.length > 0) {
                                 const room = roomRes.rows[0];
