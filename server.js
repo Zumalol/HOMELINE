@@ -1644,90 +1644,96 @@ app.post('/webhook', async (req, res) => {
             }
         }
 
-            // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
-            if (event.type === 'postback') {
-                const postbackData = new URLSearchParams(event.postback.data);
-                const action = postbackData.get('action');
+           // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยัน" จาก Flex Message (Postback Event)
+        if (event.type === 'postback') {
+            const postbackData = event.postback?.data || '';
+            const params = new URLSearchParams(postbackData);
+            
+            // แก้ไข: ดึงค่าจาก params แทน postbackData
+            const action = params.get('action');
+
+            if (action === 'confirm_slip') {
+                const tenantId = params.get('userId');
+                const amount = params.get('amount') || '0';
+                const billName = params.get('billName'); // รับค่าชื่อบิล
                 
-                if (action === 'confirm_slip') {
-                    const tenantId = postbackData.get('userId');
-                    const amount = postbackData.get('amount');
-                    const billName = postbackData.get('billName'); // รับค่าชื่อบิล
-                    
-                    if (tenantId) {
-                        try {
-                            const roomRes = await pool.query(`
-                                SELECT r.id, r.number
-                                FROM rooms r
-                                JOIN tenants t ON r.tenant = t.name
-                                WHERE t.line_id = $1 LIMIT 1
-                            `, [tenantId]);
+                if (tenantId) {
+                    try {
+                        const roomRes = await pool.query(`
+                            SELECT r.id, r.number
+                            FROM rooms r
+                            JOIN tenants t ON r.tenant = t.name
+                            WHERE t.line_id = $1 LIMIT 1
+                        `, [tenantId]);
 
-                            if (roomRes.rows.length > 0) {
-                                const room = roomRes.rows[0];
-                                
-                                // กรณีเลือกชำระแบบเจาะจงบิล
-                                if (billName && billName !== 'null' && billName !== '') {
-                                    // 1. อัปเดตสถานะบิลใบนั้นในตาราง bills เป็น 'ชำระเงินแล้ว'
-                                    const billIdMatch = billName.match(/#(\d+)/);
-                                    if (billIdMatch) {
-                                        const billId = billIdMatch[1];
-                                        await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
-                                    } else {
-                                        const filePath = path.join(__dirname, 'public', 'exports', billName);
-                                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
-                                    }
-
-                                    // 2. เช็คว่ายังเหลือบิลใบอื่นของห้องนี้ค้างอยู่อีกหรือไม่
-                                    const remainingBillsRes = await pool.query(`
-                                        SELECT * FROM bills 
-                                        WHERE room_number = $1 AND status = 'ค้างชำระ'
-                                    `, [room.number]);
-
-                                    // 3. ถ้าไม่เหลือบิลค้างชำระแล้ว ให้เปลี่ยนสถานะห้องพักเป็น 'ชำระเงินแล้ว'
-                                    if (remainingBillsRes.rows.length === 0) {
-                                        await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
-                                    }
-                                    
-                                    pendingSlipBills.delete(tenantId);
+                        if (roomRes.rows.length > 0) {
+                            const room = roomRes.rows[0];
+                            
+                            // กรณีเลือกชำระแบบเจาะจงบิล
+                            if (billName && billName !== 'null' && billName !== '') {
+                                // 1. อัปเดตสถานะบิลใบนั้นในตาราง bills เป็น 'ชำระเงินแล้ว'
+                                const billIdMatch = billName.match(/#(\d+)/);
+                                if (billIdMatch) {
+                                    const billId = billIdMatch[1];
+                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
                                 } else {
-                                    // การยืนยันแบบปกติ
-                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
+                                    const filePath = path.join(__dirname, 'public', 'exports', billName);
+                                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath); 
+                                }
+
+                                // 2. เช็คว่ายังเหลือบิลใบอื่นของห้องนี้ค้างอยู่อีกหรือไม่
+                                const remainingBillsRes = await pool.query(`
+                                    SELECT * FROM bills 
+                                    WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                `, [room.number]);
+
+                                // 3. ถ้าไม่เหลือบิลค้างชำระแล้ว ให้เปลี่ยนสถานะห้องพักเป็น 'ชำระเงินแล้ว'
+                                if (remainingBillsRes.rows.length === 0) {
                                     await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
                                 }
+                                
+                                if (typeof pendingSlipBills !== 'undefined') {
+                                    pendingSlipBills.delete(tenantId);
+                                }
+                            } else {
+                                // การยืนยันแบบปกติ
+                                await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
+                                await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
                             }
-                        } catch (err) {
-                            console.error('Update Payment Status Error:', err);
                         }
+                    } catch (err) {
+                        console.error('Update Payment Status Error:', err);
                     }
+                }
 
-                    // 2. แจ้งแอดมิน 
-                    await fetch('https://api.line.me/v2/bot/message/reply', {
+                // 2. แจ้งแอดมิน 
+                await fetch('https://api.line.me/v2/bot/message/reply', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        replyToken: event.replyToken,
+                        messages: [{ type: 'text', text: `✅ คุณได้ยืนยันรับยอด ${amount} บาท เรียบร้อยแล้ว (ระบบกำลังแจ้งผู้เช่า)` }]
+                    })
+                });
+
+                // 3. แจ้งเตือนผู้เช่าทาง Push Message
+                if (tenantId) {
+                    await fetch('https://api.line.me/v2/bot/message/push', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
                         },
                         body: JSON.stringify({
-                            replyToken: event.replyToken,
-                            messages: [{ type: 'text', text: `✅ คุณได้ยืนยันรับยอด ${amount} บาท เรียบร้อยแล้ว (ระบบกำลังแจ้งผู้เช่า)` }]
+                            to: tenantId,
+                            messages: [{ type: 'text', text: `🎉 เจ้าของหอยืนยันการรับยอดชำระเงินจำนวน ${amount} บาท ของคุณเรียบร้อยแล้ว ขอบคุณครับ` }]
                         })
                     });
-
-                    if (tenantId) {
-                        await fetch('https://api.line.me/v2/bot/message/push', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                            },
-                            body: JSON.stringify({
-                                to: tenantId,
-                                messages: [{ type: 'text', text: `🎉 เจ้าของหอยืนยันการรับยอดชำระเงินจำนวน ${amount} บาท ของคุณเรียบร้อยแล้ว ขอบคุณครับ` }]
-                            })
-                        });
-                    }
                 }
+            }
             }
         }
         res.status(200).send('OK');
