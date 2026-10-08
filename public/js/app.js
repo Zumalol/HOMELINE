@@ -682,6 +682,48 @@ function onSelectSavedPaymentAccount(selectEl) {
 // =====================================================
 // EXPORTED BILLS SYSTEM (แก้ไขเรื่องวันหมดอายุและรูปภาพหาย)
 // =====================================================
+// 🔹 ฟังก์ชันช่วยแกะข้อมูลห้องจากชื่อไฟล์ เช่น Bill_Room_1401 -> หอ 1 ชั้น 4 ห้อง 01
+function parseRoomInfoFromFileName(filename) {
+    if (!filename) return null;
+    // ค้นหาเลขห้อง 4 หลัก เช่น 1401 จาก Bill_Room_1401
+    const match = filename.match(/(?:Bill_Room_|Room_|ห้อง_?|บิล_?)?(\d{4})/i);
+    if (match) {
+        const fullCode = match[1];            // "1401"
+        const dorm = fullCode.charAt(0);      // "1" -> หอ 1
+        const floor = fullCode.charAt(1);     // "4" -> ชั้น 4
+        const room = fullCode.substring(2);   // "01" -> ห้อง 01
+        return {
+            fullCode,
+            dorm,
+            floor,
+            room,
+            displayText: `หอ ${dorm} ชั้น ${floor} ห้อง ${room}`
+        };
+    }
+    return null;
+}
+
+// 🔹 ฟังก์ชันช่วยหาเดือนที่ออกบิลจากคอลัมน์ created_at (รูปแบบ YYYY-MM)
+function parseBillMonthFromCreatedAt(createdAt, filename) {
+    if (createdAt) {
+        const d = new Date(createdAt);
+        if (!isNaN(d.getTime())) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            return `${year}-${month}`; // เช่น "2026-10"
+        }
+    }
+    // สำรองหากไม่มี created_at ให้หาจากชื่อไฟล์ (YYYY-MM หรือ YYYY_MM)
+    if (filename) {
+        const match = filename.match(/(\d{4})[-_](\d{2})/);
+        if (match) {
+            return `${match[1]}-${match[2]}`;
+        }
+    }
+    return '';
+}
+
+// 1. โหลดรายการบิลและวาดการ์ดแสดงผล
 async function fetchExportedBills() {
     const grid = document.getElementById('bills-grid');
     if (!grid) return;
@@ -689,9 +731,6 @@ async function fetchExportedBills() {
     grid.innerHTML = '<div class="text-center py-10 text-indigo-400 font-medium col-span-full animate-pulse">⏳ กำลังโหลดข้อมูลบิล...</div>';
     
     try {
-        // โหลดข้อมูลกลุ่มหอพักมาใส่ Dropdown
-        await fetchDormitoriesForBillFilter();
-
         const res = await fetch('/api/exported-bills');
         const data = await res.json();
         
@@ -710,6 +749,9 @@ async function fetchExportedBills() {
         }
         
         const sortedFiles = data.files.sort((a, b) => b.name.localeCompare(a.name));
+
+        // สร้างตัวเลือก Dropdown กลุ่มหอพักจากเลขหอพักที่พบในไฟล์บิล
+        populateDormFilterFromFiles(sortedFiles);
         
         grid.innerHTML = sortedFiles.map(file => {
             let paymentStatus = file.payment_status || 'ค้างชำระ';
@@ -732,22 +774,20 @@ async function fetchExportedBills() {
             }
 
             const imgUrl = file.url || `/exports/${file.name}`;
-            const dormName = file.dormitory_name || file.dormName || '';
-            
-            // 📌 แกะข้อมูลเดือน (YYYY-MM) จากชื่อไฟล์หาก backend ไม่ได้ส่งมา
-            let billMonth = file.bill_month || file.billMonth || '';
-            if (!billMonth && file.name) {
-                const monthMatch = file.name.match(/(\d{4})[-_](\d{2})/);
-                if (monthMatch) {
-                    billMonth = `${monthMatch[1]}-${monthMatch[2]}`;
-                }
-            }
+
+            // แกะข้อมูลเลขห้อง (หอ/ชั้น/ห้อง) จากชื่อไฟล์ เช่น Bill_Room_1401 -> หอ 1 ชั้น 4 ห้อง 01
+            const roomInfo = parseRoomInfoFromFileName(file.name);
+            const dormNumber = roomInfo ? roomInfo.dorm : '';
+            const roomDisplayText = roomInfo ? roomInfo.displayText : (file.dormitory_name || 'ไม่ระบุหอพัก');
+
+            // หาเดือนที่ออกบิลจากคอลัมน์ created_at
+            const billMonth = parseBillMonthFromCreatedAt(file.created_at, file.name);
 
             return `
             <div class="bill-card bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg hover:border-indigo-200 transition-all duration-300 group flex flex-col relative"
                  data-filename="${escapeHTML(file.name.toLowerCase())}"
-                 data-dorm="${escapeHTML(dormName.toLowerCase())}"
-                 data-month="${escapeHTML(billMonth.toLowerCase())}">
+                 data-dorm="${escapeHTML(dormNumber)}"
+                 data-month="${escapeHTML(billMonth)}">
                 
                 <a href="${imgUrl}" target="_blank" class="block overflow-hidden bg-gray-50 relative h-56">
                     <img src="${imgUrl}" 
@@ -759,11 +799,17 @@ async function fetchExportedBills() {
                 </a>
                 
                 <div class="p-4 flex flex-col flex-1">
-                    <p class="text-sm font-bold text-gray-800 truncate mb-4" title="${escapeHTML(file.name)}">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                            🏢 ${escapeHTML(roomDisplayText)}
+                        </span>
+                        ${billMonth ? `<span class="text-[11px] text-gray-400 font-medium">📅 ${billMonth}</span>` : ''}
+                    </div>
+                    <p class="text-sm font-bold text-gray-800 truncate my-2" title="${escapeHTML(file.name)}">
                         ${escapeHTML(file.name)}
                     </p>
                     
-                    <div class="flex gap-2 mt-auto">
+                    <div class="flex gap-2 mt-auto pt-2">
                         <a href="${imgUrl}" target="_blank" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 py-2.5 rounded-xl hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-all shadow-sm hover:shadow active:scale-95">
                             👁️ ดูรูป
                         </a>
@@ -785,56 +831,49 @@ async function fetchExportedBills() {
     }
 }
 
-// 2. โหลดรายชื่อกลุ่มหอพักใส่ Dropdown กรองบิล
-async function fetchDormitoriesForBillFilter() {
+// 2. เติมตัวเลือกใส่ Dropdown กลุ่มหอพัก (อิงตามเลขหน้าสุด)
+function populateDormFilterFromFiles(files) {
     const select = document.getElementById('filterBillDorm');
     if (!select) return;
 
-    try {
-        const res = await fetch('/api/dormitories');
-        const data = await res.json();
-        const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+    const dormSet = new Set();
+    files.forEach(file => {
+        const roomInfo = parseRoomInfoFromFileName(file.name);
+        if (roomInfo && roomInfo.dorm) {
+            dormSet.add(roomInfo.dorm);
+        }
+    });
 
-        select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
-            dorms.map(d => `<option value="${escapeHTML(d.name.toLowerCase())}">${escapeHTML(d.name)}</option>`).join('');
-    } catch (e) {
-        console.error('Error fetching dormitories for bill filter:', e);
-    }
+    const sortedDorms = Array.from(dormSet).sort((a, b) => a - b);
+
+    select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
+        sortedDorms.map(d => `<option value="${d}">หอ ${d}</option>`).join('');
 }
 
-// 3. ฟังก์ชันการกรองบิลตาม คำค้นหา, กลุ่มหอพัก, และ ประจำเดือน
-
+// 3. ฟังก์ชันกรองบิลตาม คำค้นหา, กลุ่มหอพัก (เลขหอหน้าสุด), และ เดือนที่ออกบิล (created_at)
 function filterExportedBills() {
     const searchKeyword = (document.getElementById('searchBillInput')?.value || '').toLowerCase().trim();
-    const selectedDorm = (document.getElementById('filterBillDorm')?.value || 'all').toLowerCase().trim();
+    const selectedDorm = (document.getElementById('filterBillDorm')?.value || 'all').trim();
     const selectedMonth = (document.getElementById('filterBillMonth')?.value || '').trim(); // เช่น "2026-10"
-
-    // เตรียมรูปแบบเดือนทั้ง 2 แบบ เช่น "2026-10" และ "2026_10"
-    const monthHyphen = selectedMonth; 
-    const monthUnderscore = selectedMonth.replace('-', '_');
 
     const cards = document.querySelectorAll('#bills-grid .bill-card');
     let visibleCount = 0;
 
     cards.forEach(card => {
         const fileName = (card.getAttribute('data-filename') || '').toLowerCase();
-        const cardDorm = (card.getAttribute('data-dorm') || '').toLowerCase();
-        const cardMonth = (card.getAttribute('data-month') || '').toLowerCase();
+        const cardDorm = (card.getAttribute('data-dorm') || '').trim();   // เลขหอ เช่น "1"
+        const cardMonth = (card.getAttribute('data-month') || '').trim(); // YYYY-MM เช่น "2026-10"
 
-        // 1. ตรวจสอบคำค้นหา (ชื่อไฟล์หรือเลขห้อง)
+        // 1. ตรวจสอบคำค้นหา (ชื่อไฟล์ หรือเลขห้อง)
         const matchSearch = !searchKeyword || fileName.includes(searchKeyword);
         
-        // 2. ตรวจสอบกลุ่มหอพัก (เช็คจาก attribute หรือค้นในชื่อไฟล์)
-        const matchDorm = selectedDorm === 'all' || 
-                          (cardDorm && cardDorm.includes(selectedDorm)) || 
-                          fileName.includes(selectedDorm);
+        // 2. ตรวจสอบกลุ่มหอพักตามเลขหน้าสุด
+        const matchDorm = selectedDorm === 'all' || cardDorm === selectedDorm;
 
-        // 3. ตรวจสอบเดือน (รองรับทั้ง YYYY-MM, YYYY_MM และการเช็คจากชื่อไฟล์)
+        // 3. ตรวจสอบเดือนที่ออกบิล (จาก created_at)
         let matchMonth = true;
         if (selectedMonth) {
-            matchMonth = (cardMonth && (cardMonth.includes(monthHyphen) || cardMonth.includes(monthUnderscore))) ||
-                         fileName.includes(monthHyphen) || 
-                         fileName.includes(monthUnderscore);
+            matchMonth = cardMonth === selectedMonth || fileName.includes(selectedMonth.replace('-', '_')) || fileName.includes(selectedMonth);
         }
 
         if (matchSearch && matchDorm && matchMonth) {
@@ -864,7 +903,6 @@ function filterExportedBills() {
     }
 }
 
-
 // 4. ล้างตัวกรองทั้งหมด
 function resetBillFilters() {
     if (document.getElementById('searchBillInput')) document.getElementById('searchBillInput').value = '';
@@ -873,7 +911,6 @@ function resetBillFilters() {
     filterExportedBills();
 }
 
-// เปิดให้เรียกใช้ในสโคป window
 window.filterExportedBills = filterExportedBills;
 window.resetBillFilters = resetBillFilters;
 
