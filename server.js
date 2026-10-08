@@ -1616,11 +1616,13 @@ app.post('/webhook', async (req, res) => {
 
                     if (tenantId) {
                         try {
+                            // 1. ค้นหาข้อมูลห้องพักจาก line_id (รองรับทั้งการผูกที่ตาราง rooms หรือ tenants)
                             let roomRes = await pool.query(`
                                 SELECT r.id, r.number
                                 FROM rooms r
-                                JOIN tenants t ON (r.tenant = t.name OR r.number = t.room_number)
-                                WHERE t.line_id = $1 LIMIT 1
+                                LEFT JOIN tenants t ON r.tenant = t.name
+                                WHERE t.line_id = $1 OR r.line_id = $1 
+                                LIMIT 1
                             `, [tenantId]);
 
                             if (roomRes.rows.length === 0) {
@@ -1630,31 +1632,50 @@ app.post('/webhook', async (req, res) => {
                             if (roomRes.rows.length > 0) {
                                 const room = roomRes.rows[0];
 
+                                // 2. อัปเดตสถานะบิลของห้องนั้นๆ ให้เป็น 'ชำระเงินแล้ว'
                                 if (billName && billName !== 'null' && billName !== 'undefined' && billName !== '') {
-                                    const billIdMatch = billName.match(/\d+/);
-                                    if (billIdMatch) {
-                                        const billId = billIdMatch[0];
-                                        await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE id = $1`, [billId]);
-                                    } else {
-                                        const filePath = path.join(__dirname, 'public', 'exports', billName);
-                                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                                    }
+                                    // ลบไฟล์ส่งออกชั่วคราว (ถ้ามี)
+                                    const filePath = path.join(__dirname, 'public', 'exports', billName);
+                                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-                                    const remainingBillsRes = await pool.query(`
-                                        SELECT id FROM bills 
-                                        WHERE room_number = $1 AND status = 'ค้างชำระ'
-                                    `, [room.number]);
+                                    // อัปเดตบิลที่ตรงกับชื่อไฟล์ หรือบิลที่ค้างชำระของห้องนี้
+                                    const updateBillRes = await pool.query(`
+                                        UPDATE bills 
+                                        SET status = 'ชำระเงินแล้ว' 
+                                        WHERE (file_name = $1 OR name = $1 OR filename = $1 OR room_number = $2)
+                                        AND status = 'ค้างชำระ'
+                                    `, [billName, room.number]);
 
-                                    if (remainingBillsRes.rows.length === 0) {
-                                        await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
-                                    }
-
-                                    if (typeof pendingSlipBills !== 'undefined') {
-                                        pendingSlipBills.delete(tenantId);
+                                    // หากไม่พบบิลจากชื่อไฟล์ ให้อัปเดตบิลค้างชำระของห้องนั้นโดยตรง
+                                    if (updateBillRes.rowCount === 0) {
+                                        await pool.query(`
+                                            UPDATE bills 
+                                            SET status = 'ชำระเงินแล้ว' 
+                                            WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                        `, [room.number]);
                                     }
                                 } else {
-                                    await pool.query(`UPDATE bills SET status = 'ชำระเงินแล้ว' WHERE room_number = $1`, [room.number]);
+                                    // กรณีไม่มีการระบุ billName เจาะจง ให้อัปเดตบิลค้างชำระทั้งหมดเฉพาะห้องนี้
+                                    await pool.query(`
+                                        UPDATE bills 
+                                        SET status = 'ชำระเงินแล้ว' 
+                                        WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                    `, [room.number]);
+                                }
+
+                                // 3. ตรวจสอบว่าห้องนี้ยังมีบิลค้างชำระอยู่อีกหรือไม่
+                                const remainingBillsRes = await pool.query(`
+                                    SELECT id FROM bills 
+                                    WHERE room_number = $1 AND status = 'ค้างชำระ'
+                                `, [room.number]);
+
+                                // ถ้าไม่มีบิลค้างชำระแล้ว ให้อัปเดตสถานะห้องเป็น 'ชำระเงินแล้ว'
+                                if (remainingBillsRes.rows.length === 0) {
                                     await pool.query(`UPDATE rooms SET payment_status = 'ชำระเงินแล้ว' WHERE id = $1`, [room.id]);
+                                }
+
+                                if (typeof pendingSlipBills !== 'undefined') {
+                                    pendingSlipBills.delete(tenantId);
                                 }
                             } else {
                                 console.warn(`[Confirm Slip] ไม่พบข้อมูลห้องพักของ tenantId: ${tenantId}`);
