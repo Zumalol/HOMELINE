@@ -2697,161 +2697,111 @@ async function fetchAndRenderCards() {
 // =====================================================
 let currentTenants = [];
 
-// 1. ดึงข้อมูลผู้เช่าจาก API
+// ดึงข้อมูลผู้เช่าทั้งหมดจากฐานข้อมูลมาแสดงในการ์ด
 async function fetchTenants() {
     const grid = document.getElementById('tenant-grid');
-    if (grid) {
-        grid.innerHTML = `<div class="col-span-full text-center py-10 text-indigo-500 font-medium animate-pulse">⏳ กำลังโหลดข้อมูลผู้เช่า...</div>`;
-    }
+    if (!grid) return;
+
+    grid.innerHTML = `<div class="col-span-full text-center py-10 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดข้อมูลผู้เช่า...</div>`;
 
     try {
+        // ยิง Request ไปยัง API ของ Server เพื่ออ่านข้อมูลจาก DB
         const res = await fetch('/api/tenants');
         const data = await res.json();
 
-        if (res.ok) {
-            allTenants = Array.isArray(data) ? data : (data.tenants || []);
-            filterTenants(); // กรองข้อมูลและแสดงผล
-        } else {
-            throw new Error(data.message || 'ไม่สามารถดึงข้อมูลผู้เช่าได้');
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลผู้เช่าได้');
         }
+
+        currentTenants = data.tenants || [];
+
+        // กรณีไม่มีข้อมูลในฐานข้อมูล
+        if (currentTenants.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+                    <div class="text-6xl mb-4 opacity-50">👻</div>
+                    <p class="text-gray-500 text-lg font-bold">ยังไม่มีข้อมูลผู้เช่าในระบบ</p>
+                    <p class="text-gray-400 text-sm mt-1">เริ่มต้นจัดการหอพักด้วยการเพิ่มรายชื่อผู้เช่า</p>
+                    <button onclick="openTenantModal()" class="mt-5 px-5 py-2.5 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-colors">
+                        + เพิ่มผู้เช่าคนแรก
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        // นำข้อมูล array (currentTenants) จาก DB มา Render เป็น HTML การ์ด
+        grid.innerHTML = currentTenants.map(t => {
+            const shortName = t.name ? t.name.trim().substring(0, 2) : '👤';
+            return `
+                <div class="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl border border-gray-100 hover:border-indigo-100 transition-all duration-300 flex flex-col justify-between transform hover:-translate-y-1">
+                    <div>
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="flex items-center space-x-4">
+                                <div class="w-14 h-14 bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 rounded-2xl flex items-center justify-center font-extrabold text-xl shadow-inner border border-indigo-50">
+                                    ${escapeHTML(shortName)}
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-gray-900 text-lg group-hover:text-indigo-700 transition-colors">${escapeHTML(t.name)}</h3>
+                                    <div class="flex items-center gap-1.5 mt-0.5">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span>
+                                        <span class="text-xs text-gray-500 font-medium">ผู้เช่าปัจจุบัน</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-3 text-sm text-gray-600 mt-5 mb-6 bg-gray-50/50 rounded-xl p-4 border border-gray-100/50">
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">🪪</span> <span class="font-mono font-semibold text-gray-700">${escapeHTML(t.id_card || '-')}</span></p>
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">🏷️</span> <span class="font-semibold">${escapeHTML(t.nickname || '-')}</span></p>
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">📱</span> <span class="font-semibold">${escapeHTML(t.phone || '-')}</span></p>
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">👨‍👩‍👧</span> <span class="text-gray-400 text-xs w-16">ผู้ปกครอง</span> <span class="font-medium">${escapeHTML(t.parent_phone || '-')}</span></p>
+                            <p class="flex items-center gap-3"><span class="text-lg opacity-80">💬</span> <span class="text-gray-400 text-xs w-16">LINE ID</span> <span class="text-emerald-600 font-semibold">${escapeHTML(t.display_name || t.line_id || '-')}</span></p>
+                            <p class="flex items-start gap-3 pt-2 border-t border-gray-100 mt-2"><span class="text-lg mt-0.5 opacity-80">🏠</span> <span class="text-xs text-gray-500 leading-relaxed line-clamp-2 mt-1">${escapeHTML(t.address || '-')}</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center justify-end space-x-2 pt-1">
+                        <button onclick="editTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-1.5">
+                            แก้ไข
+                        </button>
+                        <button onclick="deleteTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-600 hover:text-white transition-colors flex items-center gap-1.5">
+                            ลบ
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
     } catch (error) {
-        console.error('Fetch Tenants Error:', error);
-        if (grid) {
-            grid.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 font-bold bg-rose-50 rounded-2xl">❌ เกิดข้อผิดพลาดในการโหลดข้อมูลผู้เช่า</div>`;
-        }
+        console.error(error);
+        grid.innerHTML = `<div class="col-span-full text-center py-10 text-rose-500 font-bold bg-rose-50 rounded-2xl">❌ ${error.message}</div>`;
     }
 }
 
-// 2. ฟังก์ชันค้นหาและกรองผู้เช่า
+// 3. ฟังก์ชันค้นหาและกรองข้อมูลผู้เช่า
 function filterTenants() {
-    const searchInput = document.getElementById('searchTenantInput');
-    const clearBtn = document.getElementById('clearSearchBtn');
-    const keyword = (searchInput?.value || '').toLowerCase().trim();
+    const searchKeyword = (document.getElementById('searchTenantInput')?.value || '').toLowerCase().trim();
 
-    // แสดง/ซ่อน ปุ่มล้างการค้นหา
-    if (clearBtn) {
-        if (keyword) clearBtn.classList.remove('hidden');
-        else clearBtn.classList.add('hidden');
+    if (!searchKeyword) {
+        renderTenants(currentTenants);
+        return;
     }
 
-    // กรองข้อมูลตาม ชื่อ, ชื่อเล่น, เบอร์โทร, เบอร์ผู้ปกครอง, เลขห้อง, LINE ID, เลขบัตร
-    const filtered = allTenants.filter(t => {
-        const name = (t.name || '').toLowerCase();
-        const nickname = (t.nickname || '').toLowerCase();
-        const phone = (t.phone || '').toLowerCase();
-        const parentPhone = (t.parent_phone || '').toLowerCase();
-        const roomNumber = (t.room_number || t.room || '').toLowerCase();
-        const lineId = (t.line_id || '').toLowerCase();
-        const idCard = (t.id_card || '').toLowerCase();
+    const filtered = currentTenants.filter(t => {
+        const nameMatch = (t.name || '').toLowerCase().includes(searchKeyword);
+        const nicknameMatch = (t.nickname || '').toLowerCase().includes(searchKeyword);
+        const phoneMatch = (t.phone || '').toLowerCase().includes(searchKeyword);
+        const lineMatch = (t.line_id || '').toLowerCase().includes(searchKeyword);
+        const idCardMatch = (t.id_card || '').toLowerCase().includes(searchKeyword);
 
-        return name.includes(keyword) || 
-               nickname.includes(keyword) || 
-               phone.includes(keyword) || 
-               parentPhone.includes(keyword) || 
-               roomNumber.includes(keyword) || 
-               lineId.includes(keyword) || 
-               idCard.includes(keyword);
+        return nameMatch || nicknameMatch || phoneMatch || lineMatch || idCardMatch;
     });
 
     renderTenants(filtered);
 }
-// 3. ฟังก์ชันล้างช่องค้นหา
-function clearTenantSearch() {
-    const searchInput = document.getElementById('searchTenantInput');
-    if (searchInput) {
-        searchInput.value = '';
-        filterTenants();
-        searchInput.focus();
-    }
-}
 
-// 4. ฟังก์ชันวาดการ์ดผู้เช่าลงหน้าจอ
-function renderTenants(tenants) {
-    const grid = document.getElementById('tenant-grid');
-    const badge = document.getElementById('tenant-count-badge');
-
-    if (badge) {
-        badge.innerText = `${tenants.length} คน`;
-    }
-
-    if (!grid) return;
-
-    if (!tenants || tenants.length === 0) {
-        grid.innerHTML = `
-            <div class="col-span-full flex flex-col items-center justify-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                <div class="text-4xl mb-2 opacity-50">🔍</div>
-                <p class="text-gray-500 font-bold text-base">ไม่พบข้อมูลผู้เช่าที่ตรงกับการค้นหา</p>
-                <p class="text-xs text-gray-400 mt-1">ลองเปลี่ยนคำค้นหา หรือกดล้างการค้นหา</p>
-            </div>
-        `;
-        return;
-    }
-
-    grid.innerHTML = tenants.map(t => {
-        const roomBadge = (t.room_number || t.room)
-            ? `<span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-indigo-100">🏠 ห้อง ${escapeHTML(t.room_number || t.room)}</span>`
-            : `<span class="bg-gray-100 text-gray-400 px-2 py-0.5 rounded text-xs font-medium">ยังไม่มีห้อง</span>`;
-
-        return `
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 flex flex-col justify-between group">
-                <div>
-                    <!-- Header -->
-                    <div class="flex items-start justify-between mb-3 border-b border-gray-100 pb-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold flex items-center justify-center text-lg shadow-sm shrink-0">
-                                ${escapeHTML((t.nickname || t.name || '?').charAt(0))}
-                            </div>
-                            <div class="min-w-0">
-                                <h3 class="font-bold text-gray-800 text-base group-hover:text-indigo-600 transition-colors truncate" title="${escapeHTML(t.name)}">
-                                    ${escapeHTML(t.name)}
-                                </h3>
-                                ${t.nickname ? `<span class="inline-block text-xs font-semibold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded mt-0.5">ชื่อเล่น: ${escapeHTML(t.nickname)}</span>` : ''}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Details -->
-                    <div class="space-y-2 text-xs text-gray-600 bg-gray-50/80 p-3 rounded-xl border border-gray-100 mb-4">
-                        <div class="flex items-center justify-between">
-                            <span class="text-gray-400">📱 เบอร์โทร:</span>
-                            <strong class="text-gray-800 font-mono">${escapeHTML(t.phone || '-')}</strong>
-                        </div>
-                        ${t.parent_phone ? `
-                            <div class="flex items-center justify-between">
-                                <span class="text-gray-400">👨‍👩‍👧 เบอร์ผู้ปกครอง:</span>
-                                <span class="text-gray-700 font-mono">${escapeHTML(t.parent_phone)}</span>
-                            </div>
-                        ` : ''}
-                        ${t.line_id ? `
-                            <div class="flex items-center justify-between">
-                                <span class="text-gray-400">💬 LINE ID:</span>
-                                <span class="text-emerald-600 font-semibold">${escapeHTML(t.line_id)}</span>
-                            </div>
-                        ` : ''}
-                        <div class="flex items-center justify-between pt-1 border-t border-gray-200/60">
-                            <span class="text-gray-400">ห้องพัก:</span>
-                            ${roomBadge}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="flex gap-2 pt-2 border-t border-gray-100">
-                    <button onclick="editTenant(${t.id})" class="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-bold transition-colors">
-                        ✏️ แก้ไข
-                    </button>
-                    <button onclick="deleteTenant(${t.id})" class="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-colors">
-                        🗑️ ลบ
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-//================================================
-// ดึงรายชื่อเพื่อน LINE สำหรับฟอร์มผู้เช่า
-//================================================
 async function fetchLineFriendsForTenant() {
     try {
         const res = await fetch('/api/line-friends');
