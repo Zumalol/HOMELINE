@@ -1604,7 +1604,7 @@ app.post('/webhook', async (req, res) => {
             }
 
             // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยันรับยอด" จาก Flex Message (Postback Event)
-            if (event.type === 'postback') {
+           if (event.type === 'postback') {
                 const postbackData = event.postback?.data || '';
                 const params = new URLSearchParams(postbackData);
                 const action = params.get('action');
@@ -1634,16 +1634,22 @@ app.post('/webhook', async (req, res) => {
                                     const filePath = path.join(__dirname, 'public', 'exports', billName);
                                     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-                                    // อัปเดตบิลที่ตรงกับชื่อไฟล์ หรือบิลที่ค้างชำระของห้องนี้
-                                    const updateBillRes = await pool.query(`
-                                        UPDATE bills 
-                                        SET status = 'ชำระเงินแล้ว' 
-                                        WHERE (file_name = $1 OR name = $1 OR filename = $1 OR room_number = $2)
-                                        AND status = 'ค้างชำระ'
-                                    `, [billName, room.number]);
+                                    // ตรวจสอบว่าใน billName มีเลขอ้างอิงบิล เช่น #5 หรือไม่
+                                    const billIdMatch = billName.match(/#(\d+)/);
+                                    const billId = billIdMatch ? parseInt(billIdMatch[1], 10) : null;
 
-                                    // หากไม่พบบิลจากชื่อไฟล์ ให้อัปเดตบิลค้างชำระของห้องนั้นโดยตรง
-                                    if (updateBillRes.rowCount === 0) {
+                                    let updateBillRes;
+                                    if (billId) {
+                                        // อัปเดตตาม ID ของบิลโดยตรง
+                                        updateBillRes = await pool.query(`
+                                            UPDATE bills 
+                                            SET status = 'ชำระเงินแล้ว' 
+                                            WHERE id = $1 AND status = 'ค้างชำระ'
+                                        `, [billId]);
+                                    }
+
+                                    // หากไม่มีการระบุ ID หรืออัปเดตไม่สำเร็จ ให้ใช้วิธีอัปเดตบิลค้างชำระของเลขห้องนี้แทน
+                                    if (!billId || updateBillRes.rowCount === 0) {
                                         await pool.query(`
                                             UPDATE bills 
                                             SET status = 'ชำระเงินแล้ว' 
