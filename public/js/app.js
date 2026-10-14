@@ -88,6 +88,7 @@ async function switchTab(tab) {
     else if (tab === 'tenants' || tab === 'tenant') {
     if (title) title.innerText = 'จัดการข้อมูลผู้เช่า';
     await loadComponent('main-content', '/pages/tenants.html');
+    await fetchDormitoriesForTenantFilter();
     await fetchTenants();
     }
 
@@ -2697,7 +2698,32 @@ async function fetchAndRenderCards() {
 // =====================================================
 let currentTenants = [];
 
-// ดึงข้อมูลผู้เช่าทั้งหมดจากฐานข้อมูลมาแสดงในการ์ด
+// โหลดตัวเลือกกลุ่มหอพักใส่ Dropdown ตัวกรองผู้เช่า
+function populateDormitoryFilterForTenants(data) {
+    const select = document.getElementById('filterTenantDorm');
+    if (!select) return;
+
+    const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+    const currentVal = select.value;
+
+    select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
+        dorms.map(d => `<option value="${d.id}">${escapeHTML(d.name)}</option>`).join('');
+        
+    if (currentVal) {
+        select.value = currentVal;
+    }
+}
+
+async function fetchDormitoriesForTenantFilter() {
+    try {
+        const res = await fetch('/api/dormitories');
+        const data = await res.json();
+        populateDormitoryFilterForTenants(data);
+    } catch (e) {
+        console.error('Error fetching dormitories for tenant filter:', e);
+    }
+}
+
 async function fetchTenants() {
     const grid = document.getElementById('tenant-grid');
     if (!grid) return;
@@ -2705,17 +2731,26 @@ async function fetchTenants() {
     grid.innerHTML = `<div class="col-span-full text-center py-10 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดข้อมูลผู้เช่า...</div>`;
 
     try {
-        // ยิง Request ไปยัง API ของ Server เพื่ออ่านข้อมูลจาก DB
-        const res = await fetch('/api/tenants');
-        const data = await res.json();
+        const [tenantRes, roomRes, dormRes] = await Promise.all([
+            fetch('/api/tenants'),
+            fetch('/api/rooms'),
+            fetch('/api/dormitories').catch(() => ({ ok: false }))
+        ]);
+        
+        const tenantData = await tenantRes.json();
+        const rooms = roomRes.ok ? await roomRes.json() : [];
+        const roomsArray = Array.isArray(rooms) ? rooms : [];
 
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || 'ไม่สามารถโหลดข้อมูลผู้เช่าได้');
+        if (!tenantRes.ok || !tenantData.success) {
+            throw new Error(tenantData.message || 'ไม่สามารถโหลดข้อมูลผู้เช่าได้');
         }
 
-        currentTenants = data.tenants || [];
+        currentTenants = tenantData.tenants || [];
+        
+        if (dormRes.ok) {
+            populateDormitoryFilterForTenants(await dormRes.json());
+        }
 
-        // กรณีไม่มีข้อมูลในฐานข้อมูล
         if (currentTenants.length === 0) {
             grid.innerHTML = `
                 <div class="col-span-full flex flex-col items-center justify-center py-16 bg-white rounded-3xl border-2 border-dashed border-gray-200">
@@ -2730,11 +2765,26 @@ async function fetchTenants() {
             return;
         }
 
-        // นำข้อมูล array (currentTenants) จาก DB มา Render เป็น HTML การ์ด
         grid.innerHTML = currentTenants.map(t => {
             const shortName = t.name ? t.name.trim().substring(0, 2) : '👤';
+            
+            // ค้นหาห้องที่ผู้เช่าคนนี้พักอยู่
+            const assignedRoom = roomsArray.find(r => r.tenant && r.tenant.trim() === t.name.trim());
+            
+            // แสดงสถานะหอพักและห้องพัก
+            const roomInfoText = assignedRoom 
+                ? `หอ ${escapeHTML(assignedRoom.dormitory_name || 'ไม่ระบุ')} - ห้อง ${escapeHTML(assignedRoom.number)}`
+                : 'ยังไม่มีห้องพัก';
+            
+            const roomBadgeClass = assignedRoom 
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                : 'bg-gray-100 text-gray-500 border border-gray-200';
+            
+            const dormId = assignedRoom ? (assignedRoom.dormitory_id || '') : '';
+
             return `
-                <div class="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl border border-gray-100 hover:border-indigo-100 transition-all duration-300 flex flex-col justify-between transform hover:-translate-y-1">
+                <div class="group bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl border border-gray-100 hover:border-indigo-100 transition-all duration-300 flex flex-col justify-between transform hover:-translate-y-1"
+                     data-dorm="${escapeHTML(String(dormId))}">
                     <div>
                         <div class="flex items-start justify-between mb-4">
                             <div class="flex items-center space-x-4">
@@ -2743,9 +2793,10 @@ async function fetchTenants() {
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-gray-900 text-lg group-hover:text-indigo-700 transition-colors">${escapeHTML(t.name)}</h3>
-                                    <div class="flex items-center gap-1.5 mt-0.5">
-                                        <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm"></span>
-                                        <span class="text-xs text-gray-500 font-medium">ผู้เช่าปัจจุบัน</span>
+                                    <div class="flex items-center gap-1.5 mt-1.5">
+                                        <span class="px-2.5 py-1 rounded-full text-xs font-bold ${roomBadgeClass} shadow-2xs">
+                                            🏢 ${roomInfoText}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -2763,10 +2814,10 @@ async function fetchTenants() {
 
                     <!-- Action Buttons -->
                     <div class="flex items-center justify-end space-x-2 pt-1">
-                        <button onclick="editTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-1.5">
+                        <button onclick="editTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer">
                             แก้ไข
                         </button>
-                        <button onclick="deleteTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-600 hover:text-white transition-colors flex items-center gap-1.5">
+                        <button onclick="deleteTenant(${t.id})" class="px-4 py-2 text-xs font-bold text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-600 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer">
                             ลบ
                         </button>
                     </div>
@@ -2780,13 +2831,15 @@ async function fetchTenants() {
     }
 }
 
-// 🔍 ฟังก์ชันกรอง/ค้นหาผู้เช่า (โดยไม่แก้ grid.innerHTML)
+// 🔍 ฟังก์ชันกรอง/ค้นหาผู้เช่า (รองรับทั้งคำค้นหาและตัวกรองกลุ่มหอพัก)
 function filterTenants() {
     const input = document.getElementById('searchTenantInput');
     const clearBtn = document.getElementById('clearSearchBtn');
+    const dormSelect = document.getElementById('filterTenantDorm');
+    
     const keyword = (input ? input.value : '').toLowerCase().trim();
+    const selectedDorm = dormSelect ? dormSelect.value : 'all';
 
-    // 1. ควบคุมการแสดงผลปุ่มล้างคำค้นหา (✖)
     if (clearBtn) {
         if (keyword) {
             clearBtn.classList.remove('hidden');
@@ -2795,22 +2848,21 @@ function filterTenants() {
         }
     }
 
-    // 2. ดึงการ์ดผู้เช่าทุกใบที่อยู่ใน #tenant-grid
     const cards = document.querySelectorAll('#tenant-grid > div');
 
-    // 3. วนลูปเช็คข้อความภายในการ์ดแต่ละใบ
     cards.forEach(card => {
-        // ข้าม element แจ้งเตือนกรณีไม่มีข้อมูล (ถ้ามี)
         if (card.classList.contains('col-span-full')) return;
 
-        // ดึงข้อความทั้งหมดในการ์ด (รวม ชื่อ, ชื่อเล่น, เบอร์โทร, เลขห้อง, LINE ID)
         const text = card.textContent.toLowerCase();
+        const cardDorm = card.getAttribute('data-dorm') || '';
 
-        // แสดงหรือซ่อนการ์ดตามคำค้นหา
-        if (!keyword || text.includes(keyword)) {
-            card.style.display = ''; // แสดงการ์ดกลับตามปกติ
+        const matchKeyword = !keyword || text.includes(keyword);
+        const matchDorm = selectedDorm === 'all' || cardDorm === selectedDorm;
+
+        if (matchKeyword && matchDorm) {
+            card.style.display = ''; 
         } else {
-            card.style.display = 'none'; // ซ่อนการ์ดที่ไม่ตรงกับคำค้นหา
+            card.style.display = 'none'; 
         }
     });
 }
