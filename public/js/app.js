@@ -3980,7 +3980,7 @@ async function submitRepairForm(event) {
         alert('❌ เกิดข้อผิดพลาด: ' + error.message);
     }
 }
-// 2. ฟังก์ชันอัปเดตสถานะเข้าฐานข้อมูล (Neon) ทันทีที่เปลี่ยน Dropdown
+// 2. ฟังก์ชันอัปเดตสถานะเข้าฐานข้อมูลและรีเฟรชข้อมูลบนหน้าจอทันทีโดยไม่ต้องรีหน้าเว็บ
 async function updateRepairStatus(id, newStatus) {
     try {
         const res = await fetch(`/api/repairs/${id}/status`, {
@@ -3995,16 +3995,15 @@ async function updateRepairStatus(id, newStatus) {
             throw new Error(data.message || 'ไม่สามารถอัปเดตสถานะได้');
         }
         
-        // (ตัวเลือกเสริม) แสดงข้อความแจ้งเตือนเมื่อบันทึกสำเร็จ
-        alert('✅ อัปเดตสถานะการแจ้งซ่อมเรียบร้อยแล้ว');
+        // ดึงข้อมูลรายการแจ้งซ่อมใหม่เพื่ออัปเดตตารางและตัวเลขในการ์ดสรุปทันที
+        await fetchRepairPage();
         
     } catch (error) {
         console.error('Update Repair Status Error:', error);
         alert('❌ ' + error.message);
-        await fetchRepairPage(); // ดึงข้อมูลใหม่เพื่อรีเซ็ตค่า Dropdown กลับเป็นค่าเดิมหากเกิด Error
+        await fetchRepairPage(); // ดึงข้อมูลใหม่เพื่อรีเซ็ตค่ากลับกรณีเกิดข้อผิดพลาด
     }
 }
-
 // 3. ฟังก์ชันลบการ์ด/รายการแจ้งซ่อม
 async function deleteRepair(id) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบรายการแจ้งซ่อมนี้? \n(ไม่สามารถกู้คืนได้)')) {
