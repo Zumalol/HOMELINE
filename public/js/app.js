@@ -3623,21 +3623,8 @@ function renderRepairTable(repairs) {
         }
 
         // 🛠️ แก้ไข: ตรวจสอบและแปลง image_url ที่อาจเก็บเป็น JSON Array String ให้เป็น URL ปกติ
-        let imageUrl = '';
-        if (item.image_url) {
-            try {
-                const parsed = JSON.parse(item.image_url);
-                imageUrl = Array.isArray(parsed) ? parsed[0] : item.image_url;
-            } catch (e) {
-                imageUrl = item.image_url; // กรณีที่เป็น URL ตรงๆ อยู่แล้ว
-            }
-        }
-
-        // 🛠️ แก้ไข: เปลี่ยนจาก <a href> มาเป็นปุ่มคลิกเรียก openImageModal เพื่อแสดง Popup
-        const imgHtml = imageUrl 
-            ? `<button onclick="openImageModal('${imageUrl}')" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center gap-1 bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer shadow-2xs">🖼️ ดูรูป</button>`
-            : `<span class="text-gray-400 text-xs">-</span>`;
-
+        const imgHtml = renderRepairImages(item.image_url, item.id);
+        
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50/80 transition-colors">
                 <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(item.created_at ? new Date(item.created_at).toLocaleString('th-TH') : '-')}</td>
