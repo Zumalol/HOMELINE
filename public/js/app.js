@@ -3622,8 +3622,20 @@ function renderRepairTable(repairs) {
             statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ ซ่อมเสร็จสิ้น</span>`;
         }
 
-        const imgHtml = item.image_url 
-            ? `<a href="${item.image_url}" target="_blank" class="text-indigo-600 hover:underline text-xs font-bold flex items-center gap-1">🖼️ ดูรูป</a>`
+        // 🛠️ แก้ไข: ตรวจสอบและแปลง image_url ที่อาจเก็บเป็น JSON Array String ให้เป็น URL ปกติ
+        let imageUrl = '';
+        if (item.image_url) {
+            try {
+                const parsed = JSON.parse(item.image_url);
+                imageUrl = Array.isArray(parsed) ? parsed[0] : item.image_url;
+            } catch (e) {
+                imageUrl = item.image_url; // กรณีที่เป็น URL ตรงๆ อยู่แล้ว
+            }
+        }
+
+        // 🛠️ แก้ไข: เปลี่ยนจาก <a href> มาเป็นปุ่มคลิกเรียก openImageModal เพื่อแสดง Popup
+        const imgHtml = imageUrl 
+            ? `<button onclick="openImageModal('${imageUrl}')" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center gap-1 bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer shadow-2xs">🖼️ ดูรูป</button>`
             : `<span class="text-gray-400 text-xs">-</span>`;
 
         return `
