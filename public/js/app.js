@@ -3649,17 +3649,17 @@ function renderRepairTable(repairs) {
     }).join('');
 }
 
-// 3. ฟังก์ชันกรองและค้นหารายการแจ้งซ่อม (รองรับทั้ง room, issue, detail และ tenant ครบถ้วน)
 function filterRepairTable() {
     const keyword = (document.getElementById('searchRepair')?.value || '').toLowerCase().trim();
     const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
 
     const filtered = currentRepairs.filter(item => {
+        // ดึงข้อมูลฟิลด์ต่างๆ รองรับทุกรูปแบบที่อาจเก็บในฐานข้อมูล
         const roomNo = String(item.room_number || item.room || '').toLowerCase();
         const issueText = String(item.issue || item.detail || item.description || '').toLowerCase();
         const tenantText = String(item.tenant_name || item.reporter || item.tenant || '').toLowerCase();
 
-        // ตรวจสอบเงื่อนไขการค้นหาจากเลขห้อง, อาการ, หรือชื่อผู้แจ้ง
+        // ตรวจสอบเงื่อนไขคำค้นหา (จากเลขห้อง, อาการ หรือชื่อผู้แจ้ง)
         const matchKeyword = !keyword || roomNo.includes(keyword) || issueText.includes(keyword) || tenantText.includes(keyword);
         
         // ตรวจสอบเงื่อนไขสถานะ
@@ -3671,19 +3671,14 @@ function filterRepairTable() {
     renderRepairTable(filtered);
 }
 
-// ผูก Event Listener สำหรับช่องค้นหาและตัวกรองสถานะ (ชุดเดียวจบ)
-document.addEventListener('input', (e) => {
-    if (e.target && e.target.id === 'searchRepair') {
-        filterRepairTable();
-    }
-});
-
+// ผูก Event Listener สำหรับตัวกรองสถานะ
 document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'filterRepairStatus') {
         filterRepairTable();
     }
 });
 
+// เปิดให้ HTML เรียกใช้งานได้ผ่าน Window Scope
 window.filterRepairTable = filterRepairTable;
 
 function renderRepairImages(images, repairId) {
