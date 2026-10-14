@@ -3622,7 +3622,6 @@ function renderRepairTable(repairs) {
             statusBadge = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">✅ ซ่อมเสร็จสิ้น</span>`;
         }
 
-        // 🛠️ แก้ไข: ตรวจสอบและแปลง image_url ที่อาจเก็บเป็น JSON Array String ให้เป็น URL ปกติ
         const imgHtml = renderRepairImages(item.image_url, item.id);
         
         return `
@@ -3650,7 +3649,7 @@ function renderRepairTable(repairs) {
     }).join('');
 }
 
-// 3. ฟังก์ชันกรองและค้นหารายการแจ้งซ่อม (เชื่อมกับ Input และ Dropdown)
+// 3. ฟังก์ชันกรองและค้นหารายการแจ้งซ่อม (รองรับทั้ง room, issue, detail และ tenant ครบถ้วน)
 function filterRepairTable() {
     const keyword = (document.getElementById('searchRepair')?.value || '').toLowerCase().trim();
     const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
@@ -3672,7 +3671,7 @@ function filterRepairTable() {
     renderRepairTable(filtered);
 }
 
-// ผูก Event Listener สำหรับช่องค้นหาและตัวกรองสถานะ
+// ผูก Event Listener สำหรับช่องค้นหาและตัวกรองสถานะ (ชุดเดียวจบ)
 document.addEventListener('input', (e) => {
     if (e.target && e.target.id === 'searchRepair') {
         filterRepairTable();
@@ -3685,8 +3684,6 @@ document.addEventListener('change', (e) => {
     }
 });
 
-// เปิดให้ HTML เรียกใช้งานได้ผ่าน Window Scope
-window.fetchRepairPage = fetchRepairPage;
 window.filterRepairTable = filterRepairTable;
 
 function renderRepairImages(images, repairId) {
