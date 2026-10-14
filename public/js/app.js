@@ -1323,35 +1323,29 @@ async function fetchRoomsPage() {
 // =====================================================
 let roomImagesArray = []; // ตัวแปรเก็บชุด Base64 ของรูปภาพทั้งหมด
 
-function previewRoomImages(event) {
+async function previewRoomImages(event) {
     const files = Array.from(event.target.files);
     if (!files.length) return;
 
-    // ตั้งค่าขนาดไฟล์สูงสุดเป็น 50MB (50 * 1024 * 1024 bytes)
+    // ตั้งค่าขนาดไฟล์สูงสุดเป็น 50MB
     const maxFileSize = 50 * 1024 * 1024; 
-    
-    let pending = files.length;
 
-    files.forEach(file => {
+    for (const file of files) {
         if (file.size > maxFileSize) {
             alert(`❌ ไฟล์ ${file.name} มีขนาดใหญ่เกิน 50MB`);
-            pending--;
-            return;
+            continue;
         }
 
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            roomImagesArray.push(e.target.result);
-            pending--;
-            if (pending === 0) {
-                renderRoomImagePreviews();
-            }
-        };
-        reader.readAsDataURL(file);
-    });
+        try {
+            const base64 = await fileToBase64(file);
+            roomImagesArray.push(base64);
+        } catch (error) {
+            console.error('Error reading file on mobile:', error);
+        }
+    }
 
-    // เคลียร์ค่า input file เพื่อให้กดเลือกไฟล์เพิ่มได้เรื่อยๆ
-    event.target.value = '';
+    renderRoomImagePreviews();
+    event.target.value = ''; // เคลียร์ค่า input เพื่อให้สามารถเลือกไฟล์เดิมซ้ำได้
 }
 
 function renderRoomImagePreviews() {
