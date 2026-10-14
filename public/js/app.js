@@ -3542,24 +3542,27 @@ function escapeHTML(value) {
 // REPAIR SYSTEM (ระบบแจ้งซ่อม)
 // =====================================================
 
-// 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตาราง
+// 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตารางและอัปเดตการ์ดสรุป
 async function fetchRepairPage() {
-    const tbody = document.getElementById('repair-table-body'); // ตรวจสอบ ID ของ tbody ในไฟล์ repair.html ให้ตรงกัน
-    if (!tbody) return;
     const tableBody = document.getElementById('repair-table-body');
+    if (!tableBody) return;
+
     const pendingCountEl = document.getElementById('repair-pending-count');
     const progressCountEl = document.getElementById('repair-progress-count');
     const completedCountEl = document.getElementById('repair-completed-count');
 
+    // แสดงสถานะกำลังโหลด
+    tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-12 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดรายการแจ้งซ่อม...</td></tr>`;
+
     try {
-        const res = await fetch('/api/repairs'); // เรียกใช้งาน API ดึงข้อมูลรายการแจ้งซ่อม
+        const res = await fetch('/api/repairs');
         const data = await res.json();
 
         if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
 
         currentRepairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        // 1. คำนวณนับจำนวนตามสถานะต่างๆ
+        // 1. คำนวณนับจำนวนตามสถานะต่างๆ สำหรับการ์ดสรุปด้านบน
         const pendingCount = currentRepairs.filter(r => r.status === 'รอดำเนินการ').length;
         const progressCount = currentRepairs.filter(r => r.status === 'กำลังซ่อม').length;
         
@@ -3570,90 +3573,31 @@ async function fetchRepairPage() {
 
         const completedThisMonthCount = currentRepairs.filter(r => {
             if (r.status !== 'เสร็จสิ้นแล้ว') return false;
-            if (!r.created_at && !r.updated_at) return true; // กรณีไม่มีฟิลด์วันที่ ให้ถือว่านับร่วมด้วย
+            if (!r.created_at && !r.updated_at) return true;
             const repairDate = new Date(r.updated_at || r.created_at);
             return repairDate.getMonth() === currentMonth && repairDate.getFullYear() === currentYear;
         }).length;
 
-        // 2. อัปเดตตัวเลขขึ้นการ์ดสรุปสถานะ (Overview Cards)
+        // 2. อัปเดตตัวเลขขึ้นการ์ดสรุปสถานะ
         if (pendingCountEl) pendingCountEl.innerText = pendingCount;
         if (progressCountEl) progressCountEl.innerText = progressCount;
         if (completedCountEl) completedCountEl.innerText = completedThisMonthCount;
 
-        // 3. วาดตารางรายการแจ้งซ่อม
+        // 3. วาดตารางรายการแจ้งซ่อมทั้งหมด
         renderRepairTable(currentRepairs);
 
     } catch (error) {
         console.error('Fetch Repair Page Error:', error);
-        if (tableBody) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">
-                        ❌ ${escapeHTML(error.message)}
-                    </td>
-                </tr>`;
-        }
-    }
-
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-indigo-400">⏳ กำลังโหลดข้อมูล...</td></tr>`;
-
-    try {
-        const res = await fetch('/api/repairs');
-        const data = await res.json();
-
-        // รองรับกรณีข้อมูลอยู่ใน data.repairs หรือ data
-        const repairs = Array.isArray(data) ? data : (data.repairs || []);
-
-        if (repairs.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="text-center py-8 text-gray-400 font-medium">
-                        ไม่พบรายการแจ้งซ่อม
-                    </td>
-                </tr>`;
-            return;
-        }
-
-        tbody.innerHTML = repairs.map(r => `
-            <tr class="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
-                <td class="p-3.5 text-sm text-gray-600">${escapeHTML(r.created_at || '-')}</td>
-                <td class="p-3.5 font-bold text-gray-800">${escapeHTML(r.room_number || '-')}</td>
-                <td class="p-3.5 text-sm text-gray-500">${escapeHTML(r.issue || '-')}</td>
-                <td class="p-3.5 text-sm text-gray-700">
-                    ${renderRepairImages(r.image_url)}
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">
+                    ❌ ${escapeHTML(error.message)}
                 </td>
-                <td class="p-3.5 text-sm text-gray-700">${escapeHTML(r.tenant_name || '-')}</td>
-                
-                
-                <!-- คอลัมน์สถานะ: เป็น Dropdown ให้กดเปลี่ยนได้ -->
-                <td class="p-3.5">
-                    <select onchange="updateRepairStatus(${r.id}, this.value)" 
-                            class="bg-white border border-gray-300 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-1.5 shadow-sm">
-                        <option value="รอดำเนินการ" ${r.status === 'รอดำเนินการ' ? 'selected' : ''}>รอดำเนินการ</option>
-                        <option value="กำลังซ่อม" ${r.status === 'กำลังซ่อม' ? 'selected' : ''}>กำลังซ่อม</option>
-                        <option value="เสร็จสิ้นแล้ว" ${r.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>เสร็จสิ้นแล้ว</option>
-                    </select>
-                </td>
-                
-                <!-- คอลัมน์จัดการ: มีแค่ปุ่มลบอย่างเดียว -->
-                <td class="p-3.5 text-center">
-                    <button onclick="deleteRepair(${r.id})" class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-sm" title="ลบรายการ">
-                        🗑️ ลบ
-                    </button>
-                </td>
-            </tr>
-        `).join('');
-        // ✅ เรียกใช้งานฟังก์ชันปรับปรุงการแสดงผลรูปภาพหลังเรนเดอร์เสร็จ
-        setTimeout(() => {
-            enhanceRepairImages();
-        }, 100);
-
-    } catch (error) {
-        console.error('Fetch Repairs Error:', error);
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-rose-500 font-medium">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</td></tr>`;
+            </tr>`;
     }
 }
-// ฟังก์ชันสำหรับ Render แถวในตารางรายการแจ้งซ่อม
+
+// 2. ฟังก์ชันสำหรับ Render แถวในตารางรายการแจ้งซ่อม
 function renderRepairTable(repairs) {
     const tableBody = document.getElementById('repair-table-body');
     if (!tableBody) return;
@@ -3661,8 +3605,8 @@ function renderRepairTable(repairs) {
     if (repairs.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center py-10 text-gray-400 font-medium">
-                    ไม่พบรายการแจ้งซ่อมในระบบ
+                <td colspan="7" class="text-center py-12 text-gray-400 font-medium">
+                    🔍 ไม่พบรายการแจ้งซ่อมตามเงื่อนไขที่ค้นหา
                 </td>
             </tr>`;
         return;
@@ -3679,28 +3623,72 @@ function renderRepairTable(repairs) {
         }
 
         const imgHtml = item.image_url 
-            ? `<a href="${item.image_url}" target="_blank" class="text-indigo-600 hover:underline text-xs font-bold">🖼️ ดูรูป</a>`
+            ? `<a href="${item.image_url}" target="_blank" class="text-indigo-600 hover:underline text-xs font-bold flex items-center gap-1">🖼️ ดูรูป</a>`
             : `<span class="text-gray-400 text-xs">-</span>`;
 
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50/80 transition-colors">
-                <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(item.created_at || '-')}</td>
+                <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${escapeHTML(item.created_at ? new Date(item.created_at).toLocaleString('th-TH') : '-')}</td>
                 <td class="p-4 font-bold text-gray-800">ห้อง ${escapeHTML(item.room_number || item.room || '-')}</td>
-                <td class="p-4 text-sm text-gray-700">${escapeHTML(item.detail || item.description || '-')}</td>
+                <td class="p-4 text-sm text-gray-700">${escapeHTML(item.issue || item.detail || item.description || '-')}</td>
                 <td class="p-4">${imgHtml}</td>
-                <td class="p-4 text-sm text-gray-600">${escapeHTML(item.reporter || item.tenant || '-')}</td>
+                <td class="p-4 text-sm text-gray-600">${escapeHTML(item.tenant_name || item.reporter || item.tenant || '-')}</td>
                 <td class="p-4">${statusBadge}</td>
                 <td class="p-4 text-center">
-                    <select onchange="updateRepairStatus(${item.id}, this.value)" class="text-xs p-2 rounded-xl border border-gray-200 bg-white font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                        <option value="รอดำเนินการ" ${item.status === 'รอดำเนินการ' ? 'selected' : ''}>🔴 รอดำเนินการ</option>
-                        <option value="กำลังซ่อม" ${item.status === 'กำลังซ่อม' ? 'selected' : ''}>🟡 กำลังซ่อมแซม</option>
-                        <option value="เสร็จสิ้นแล้ว" ${item.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
-                    </select>
+                    <div class="flex items-center justify-center gap-2">
+                        <select onchange="updateRepairStatus(${item.id}, this.value)" class="text-xs p-2 rounded-xl border border-gray-200 bg-white font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                            <option value="รอดำเนินการ" ${item.status === 'รอดำเนินการ' ? 'selected' : ''}>🔴 รอดำเนินการ</option>
+                            <option value="กำลังซ่อม" ${item.status === 'กำลังซ่อม' ? 'selected' : ''}>🟡 กำลังซ่อมแซม</option>
+                            <option value="เสร็จสิ้นแล้ว" ${item.status === 'เสร็จสิ้นแล้ว' ? 'selected' : ''}>✅ ซ่อมเสร็จสิ้น</option>
+                        </select>
+                        <button onclick="deleteRepair(${item.id})" class="p-2 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-2xs" title="ลบรายการ">
+                            🗑️
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 }
+
+// 3. ฟังก์ชันกรองและค้นหารายการแจ้งซ่อม (เชื่อมกับ Input และ Dropdown)
+function filterRepairTable() {
+    const keyword = (document.getElementById('searchRepair')?.value || '').toLowerCase().trim();
+    const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
+
+    const filtered = currentRepairs.filter(item => {
+        const roomNo = String(item.room_number || item.room || '').toLowerCase();
+        const issueText = String(item.issue || item.detail || item.description || '').toLowerCase();
+        const tenantText = String(item.tenant_name || item.reporter || item.tenant || '').toLowerCase();
+
+        // ตรวจสอบเงื่อนไขการค้นหาจากเลขห้อง, อาการ, หรือชื่อผู้แจ้ง
+        const matchKeyword = !keyword || roomNo.includes(keyword) || issueText.includes(keyword) || tenantText.includes(keyword);
+        
+        // ตรวจสอบเงื่อนไขสถานะ
+        const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+
+        return matchKeyword && matchStatus;
+    });
+
+    renderRepairTable(filtered);
+}
+
+// ผูก Event Listener สำหรับช่องค้นหาและตัวกรองสถานะ
+document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'searchRepair') {
+        filterRepairTable();
+    }
+});
+
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'filterRepairStatus') {
+        filterRepairTable();
+    }
+});
+
+// เปิดให้ HTML เรียกใช้งานได้ผ่าน Window Scope
+window.fetchRepairPage = fetchRepairPage;
+window.filterRepairTable = filterRepairTable;
 
 function renderRepairImages(images, repairId) {
     // ตรวจสอบข้อมูลรูปภาพ
