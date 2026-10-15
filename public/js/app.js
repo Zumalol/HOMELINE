@@ -3545,22 +3545,30 @@ async function fetchRepairPage() {
     const progressCountEl = document.getElementById('repair-progress-count');
     const completedCountEl = document.getElementById('repair-completed-count');
 
-    // แสดงสถานะกำลังโหลด
     tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-12 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดรายการแจ้งซ่อม...</td></tr>`;
 
     try {
-        const res = await fetch('/api/repairs');
-        const data = await res.json();
+        // ดึงข้อมูลทั้งรายการแจ้งซ่อมและกลุ่มหอพักพร้อมกัน
+        const [repairRes, dormRes] = await Promise.all([
+            fetch('/api/repairs'),
+            fetch('/api/dormitories').catch(() => ({ ok: false }))
+        ]);
 
-        if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
+        const data = await repairRes.json();
+        if (!repairRes.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
 
         currentRepairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        // 1. คำนวณนับจำนวนตามสถานะต่างๆ สำหรับการ์ดสรุปด้านบน
+        // 🟢 เติมตัวเลือกกลุ่มหอพักใส่ Dropdown
+        if (dormRes.ok) {
+            const dormData = await dormRes.json();
+            populateRepairDormFilter(dormData);
+        }
+
+        // คำนวณและแสดงผลการ์ดสรุป
         const pendingCount = currentRepairs.filter(r => r.status === 'รอดำเนินการ').length;
         const progressCount = currentRepairs.filter(r => r.status === 'กำลังซ่อม').length;
         
-        // กรองรายการที่เสร็จสิ้นเฉพาะภายในเดือนปัจจุบัน
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -3572,22 +3580,31 @@ async function fetchRepairPage() {
             return repairDate.getMonth() === currentMonth && repairDate.getFullYear() === currentYear;
         }).length;
 
-        // 2. อัปเดตตัวเลขขึ้นการ์ดสรุปสถานะ
         if (pendingCountEl) pendingCountEl.innerText = pendingCount;
         if (progressCountEl) progressCountEl.innerText = progressCount;
         if (completedCountEl) completedCountEl.innerText = completedThisMonthCount;
 
-        // 3. วาดตารางรายการแจ้งซ่อมทั้งหมด
         renderRepairTable(currentRepairs);
 
     } catch (error) {
         console.error('Fetch Repair Page Error:', error);
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">
-                    ❌ ${escapeHTML(error.message)}
-                </td>
-            </tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-rose-500 font-bold bg-rose-50">❌ ${escapeHTML(error.message)}</td></tr>`;
+    }
+}
+
+// ฟังก์ชันสร้างตัวเลือกกลุ่มหอพักสำหรับ Dropdown ใหม่
+function populateRepairDormFilter(data) {
+    const select = document.getElementById('filterRepairDorm');
+    if (!select) return;
+
+    const dorms = Array.isArray(data) ? data : (data.dormitories || []);
+    const currentVal = select.value;
+
+    select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
+        dorms.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
+
+    if (currentVal) {
+        select.value = currentVal;
     }
 }
 
@@ -3644,30 +3661,28 @@ function renderRepairTable(repairs) {
 }
 
 function filterRepairTable() {
-    const keyword = (document.getElementById('searchRepair')?.value || '').toLowerCase().trim();
+    const selectedDorm = document.getElementById('filterRepairDorm')?.value || 'all';
     const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
 
     const filtered = currentRepairs.filter(item => {
-        // ดึงข้อมูลฟิลด์ต่างๆ รองรับทุกรูปแบบที่อาจเก็บในฐานข้อมูล
-        const roomNo = String(item.room_number || item.room || '').toLowerCase();
-        const issueText = String(item.issue || item.detail || item.description || '').toLowerCase();
-        const tenantText = String(item.tenant_name || item.reporter || item.tenant || '').toLowerCase();
+        // ดึงชื่อหอพักจากรายการแจ้งซ่อม (รองรับฟิลด์ dormitory_name หรือตรวจสอบจากเลขห้อง)
+        const itemDorm = String(item.dormitory_name || item.dorm_name || '').trim();
 
-        // ตรวจสอบเงื่อนไขคำค้นหา (จากเลขห้อง, อาการ หรือชื่อผู้แจ้ง)
-        const matchKeyword = !keyword || roomNo.includes(keyword) || issueText.includes(keyword) || tenantText.includes(keyword);
+        // เงื่อนไขกรองตามกลุ่มหอพัก
+        const matchDorm = selectedDorm === 'all' || itemDorm === selectedDorm;
         
-        // ตรวจสอบเงื่อนไขสถานะ
+        // เงื่อนไขกรองตามสถานะ
         const matchStatus = statusFilter === 'all' || item.status === statusFilter;
 
-        return matchKeyword && matchStatus;
+        return matchDorm && matchStatus;
     });
 
     renderRepairTable(filtered);
 }
 
-// ผูก Event Listener สำหรับตัวกรองสถานะ
+// อัปเดต Event Listener ให้รองรับ Dropdown ตัวกรองกลุ่มหอพัก
 document.addEventListener('change', (e) => {
-    if (e.target && e.target.id === 'filterRepairStatus') {
+    if (e.target && (e.target.id === 'filterRepairStatus' || e.target.id === 'filterRepairDorm')) {
         filterRepairTable();
     }
 });
