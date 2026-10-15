@@ -3535,6 +3535,32 @@ function escapeHTML(value) {
 // =====================================================
 // REPAIR SYSTEM (ระบบแจ้งซ่อม)
 // =====================================================
+// ฟังก์ชันสร้างตัวเลือกกลุ่มหอพักสำหรับ Dropdown ใหม่
+function populateRepairDormFilter(repairs) {
+    const select = document.getElementById('filterRepairDorm');
+    if (!select) return;
+
+    const dormSet = new Set();
+    repairs.forEach(item => {
+        const roomNo = String(item.room_number || item.room || '').trim();
+        if (roomNo.length > 0) {
+            const firstDigit = roomNo.charAt(0); // ดึงตัวเลขตัวแรก เช่น "2" จาก "2202"
+            if (!isNaN(firstDigit)) {
+                dormSet.add(firstDigit);
+            }
+        }
+    });
+
+    const sortedDorms = Array.from(dormSet).sort((a, b) => a - b);
+    const currentVal = select.value;
+
+    select.innerHTML = '<option value="all">🏢 ทุกหอพัก (ตามเลขห้อง)</option>' + 
+        sortedDorms.map(d => `<option value="${d}">หอ ${d}</option>`).join('');
+
+    if (currentVal) {
+        select.value = currentVal;
+    }
+}
 
 // 1. ฟังก์ชันดึงข้อมูลรายการแจ้งซ่อมมาแสดงในตารางและอัปเดตการ์ดสรุป
 async function fetchRepairPage() {
@@ -3548,22 +3574,15 @@ async function fetchRepairPage() {
     tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-12 text-indigo-400 font-medium animate-pulse">⏳ กำลังโหลดรายการแจ้งซ่อม...</td></tr>`;
 
     try {
-        // ดึงข้อมูลทั้งรายการแจ้งซ่อมและกลุ่มหอพักพร้อมกัน
-        const [repairRes, dormRes] = await Promise.all([
-            fetch('/api/repairs'),
-            fetch('/api/dormitories').catch(() => ({ ok: false }))
-        ]);
+        const res = await fetch('/api/repairs');
+        const data = await res.json();
 
-        const data = await repairRes.json();
-        if (!repairRes.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
+        if (!res.ok) throw new Error(data.message || 'ไม่สามารถโหลดรายการแจ้งซ่อมได้');
 
         currentRepairs = Array.isArray(data) ? data : (data.repairs || []);
 
-        // 🟢 เติมตัวเลือกกลุ่มหอพักใส่ Dropdown
-        if (dormRes.ok) {
-            const dormData = await dormRes.json();
-            populateRepairDormFilter(dormData);
-        }
+        // 🟢 สร้างตัวเลือกกลุ่มหอพักจากเลขห้องจริงในรายการแจ้งซ่อม
+        populateRepairDormFilter(currentRepairs);
 
         // คำนวณและแสดงผลการ์ดสรุป
         const pendingCount = currentRepairs.filter(r => r.status === 'รอดำเนินการ').length;
@@ -3592,21 +3611,7 @@ async function fetchRepairPage() {
     }
 }
 
-// ฟังก์ชันสร้างตัวเลือกกลุ่มหอพักสำหรับ Dropdown ใหม่
-function populateRepairDormFilter(data) {
-    const select = document.getElementById('filterRepairDorm');
-    if (!select) return;
 
-    const dorms = Array.isArray(data) ? data : (data.dormitories || []);
-    const currentVal = select.value;
-
-    select.innerHTML = '<option value="all">🏢 ทุกกลุ่มหอพัก</option>' + 
-        dorms.map(d => `<option value="${escapeHTML(d.name)}">${escapeHTML(d.name)}</option>`).join('');
-
-    if (currentVal) {
-        select.value = currentVal;
-    }
-}
 
 // 2. ฟังก์ชันสำหรับ Render แถวในตารางรายการแจ้งซ่อม
 function renderRepairTable(repairs) {
@@ -3660,16 +3665,17 @@ function renderRepairTable(repairs) {
     }).join('');
 }
 
+// 🔍 ฟังก์ชันกรองตารางตามเลขหอพัก (ตัวเลขหลักแรกของห้อง) และสถานะ
 function filterRepairTable() {
     const selectedDorm = document.getElementById('filterRepairDorm')?.value || 'all';
     const statusFilter = document.getElementById('filterRepairStatus')?.value || 'all';
 
     const filtered = currentRepairs.filter(item => {
-        // ดึงชื่อหอพักจากรายการแจ้งซ่อม (รองรับฟิลด์ dormitory_name หรือตรวจสอบจากเลขห้อง)
-        const itemDorm = String(item.dormitory_name || item.dorm_name || '').trim();
+        const roomNo = String(item.room_number || item.room || '').trim();
+        const firstDigit = roomNo.length > 0 ? roomNo.charAt(0) : '';
 
-        // เงื่อนไขกรองตามกลุ่มหอพัก
-        const matchDorm = selectedDorm === 'all' || itemDorm === selectedDorm;
+        // เงื่อนไขกรองตามหอ (เทียบตัวเลขหลักแรก เช่น "2")
+        const matchDorm = selectedDorm === 'all' || firstDigit === selectedDorm;
         
         // เงื่อนไขกรองตามสถานะ
         const matchStatus = statusFilter === 'all' || item.status === statusFilter;
