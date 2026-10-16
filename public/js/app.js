@@ -179,20 +179,87 @@ async function fetchDormitories() {
     }
 }
 
+// ฟังก์ชันแสดง Animation Popup แจ้งเตือนแบบ Custom แทน alert ปกติ
+function showCustomPopup(message, type = 'success') {
+    // ลบ Popup เก่าออกก่อน (ถ้ามี)
+    const existingPopup = document.getElementById('custom-animated-popup');
+    if (existingPopup) existingPopup.remove();
+
+    const isSuccess = type === 'success';
+    const borderColor = isSuccess ? 'border-emerald-500' : 'border-rose-500';
+    const iconBg = isSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600';
+    const icon = isSuccess ? '✨' : '⚠️';
+
+    const popup = document.createElement('div');
+    popup.id = 'custom-animated-popup';
+    popup.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs transition-opacity duration-300 opacity-0';
+    popup.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl border ${borderColor} transform transition-all duration-300 scale-90 translate-y-4">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-2xl ${iconBg} flex items-center justify-center text-2xl font-bold shadow-inner">
+                    ${icon}
+                </div>
+                <div>
+                    <h4 class="font-extrabold text-gray-800 text-base">${isSuccess ? 'สำเร็จ' : 'แจ้งเตือน'}</h4>
+                    <p class="text-xs text-gray-400 font-medium">ระบบจัดการหอพัก</p>
+                </div>
+            </div>
+            <p class="text-sm text-gray-600 font-medium mb-6 leading-relaxed">${escapeHTML(message)}</p>
+            <div class="flex justify-end">
+                <button onclick="closeCustomPopup()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100 active:scale-95 cursor-pointer">
+                    ตกลง
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    // เล่นอนิเมชัน Fade in & Zoom in
+    setTimeout(() => {
+        popup.classList.remove('opacity-0');
+        popup.querySelector('div > div').classList.remove('scale-90', 'translate-y-4');
+        popup.querySelector('div > div').classList.add('scale-100', 'translate-y-0');
+    }, 10);
+}
+
+function closeCustomPopup() {
+    const popup = document.getElementById('custom-animated-popup');
+    if (popup) {
+        popup.classList.add('opacity-0');
+        popup.querySelector('div > div').classList.add('scale-90', 'translate-y-4');
+        setTimeout(() => popup.remove(), 300);
+    }
+}
+
+// ฟังก์ชันเพิ่มหอพักที่ปรับเปลี่ยนเป็นใช้ Animation Popup
 async function addDormitory() {
     const nameInput = document.getElementById('newDormName');
     const name = nameInput.value.trim();
-    if (!name) return alert('กรุณากรอกชื่อหอพัก');
+    
+    if (!name) {
+        showCustomPopup('กรุณากรอกชื่อหอพักก่อนทำการบันทึก', 'error');
+        return;
+    }
 
     try {
-        await fetch('/api/dormitories', {
+        const res = await fetch('/api/dormitories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
         });
-        nameInput.value = '';
-        fetchDormitories();
-    } catch (e) { console.error(e); }
+
+        if (res.ok) {
+            nameInput.value = '';
+            showCustomPopup('✅ เพิ่มชื่อหอพักใหม่เข้าสู่ระบบเรียบร้อยแล้ว', 'success');
+            fetchDormitories();
+        } else {
+            showCustomPopup('❌ ไม่สามารถเพิ่มชื่อหอพักได้ กรุณาลองใหม่อีกครั้ง', 'error');
+        }
+    } catch (e) { 
+        console.error(e);
+        showCustomPopup('❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
 }
 
 async function editDormitory(id, oldName) {
