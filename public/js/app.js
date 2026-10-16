@@ -1901,32 +1901,84 @@ async function saveRoom(e) {
     }
 }
 
-async function deleteRoom(id) {
-    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบห้องพักนี้?')) {
-        return;
-    }
+// ฟังก์ชันแสดง Modal Popup ยืนยันการลบห้องพัก (แทน confirm แบบเดิม)
+function deleteRoom(id) {
+    // ลบ Popup เก่าออกก่อน (ถ้ามี)
+    const existingModal = document.getElementById('custom-delete-room-modal');
+    if (existingModal) existingModal.remove();
 
-    try {
-        const res = await fetch(`/api/rooms/${id}`, {
-            method: 'DELETE'
-        });
+    const modal = document.createElement('div');
+    modal.id = 'custom-delete-room-modal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs transition-opacity duration-300 opacity-0';
+    modal.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-rose-100 transform transition-all duration-300 scale-90 translate-y-4">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-2xl font-bold shadow-inner">
+                    🗑️
+                </div>
+                <div>
+                    <h4 class="font-extrabold text-gray-800 text-base">ยืนยันการลบห้องพัก</h4>
+                    <p class="text-xs text-gray-400 font-medium">ระบบจัดการหอพัก</p>
+                </div>
+            </div>
+            
+            <p class="text-sm text-gray-600 font-medium mb-6 leading-relaxed">คุณแน่ใจหรือไม่ที่จะลบห้องพักนี้? การกระทำนี้ไม่สามารถย้อนกลับได้</p>
 
-        const data = await res.json();
+            <div class="flex gap-2">
+                <button onclick="closeDeleteRoomModal()" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer">
+                    ยกเลิก
+                </button>
+                <button id="swalConfirmDeleteRoomBtn" class="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-100 active:scale-95 cursor-pointer">
+                    ยืนยันลบ
+                </button>
+            </div>
+        </div>
+    `;
 
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || data.error || 'ลบห้องพักไม่สำเร็จ');
+    document.body.appendChild(modal);
+
+    // เล่นอนิเมชัน Fade in & Zoom in
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('div > div').classList.remove('scale-90', 'translate-y-4');
+        modal.querySelector('div > div').classList.add('scale-100', 'translate-y-0');
+    }, 10);
+
+    // ผูก Event กดปุ่มยืนยันลบ
+    document.getElementById('swalConfirmDeleteRoomBtn').onclick = async () => {
+        try {
+            const res = await fetch(`/api/rooms/${id}`, {
+                method: 'DELETE'
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.message || data.error || 'ลบห้องพักไม่สำเร็จ');
+            }
+
+            // ✅ แสดง Animated Popup (Success) เมื่อลบสำเร็จ
+            showCustomPopup('✅ ' + data.message, 'success');
+            await fetchRoomsPage();
+
+        } catch (error) {
+            console.error('Delete Room Error:', error);
+            // ❌ แสดง Animated Popup (Error) หากเกิดข้อผิดพลาด
+            showCustomPopup('❌ ' + error.message, 'error');
         }
+        closeDeleteRoomModal();
+    };
+}
 
-        // ✅ เปลี่ยนเป็น Animated Popup (Success)
-        showCustomPopup('✅ ' + data.message, 'success');
-        await fetchRoomsPage();
-
-    } catch (error) {
-        console.error('Delete Room Error:', error);
-        // ❌ เปลี่ยนเป็น Animated Popup (Error)
-        showCustomPopup('❌ ' + error.message, 'error');
+function closeDeleteRoomModal() {
+    const modal = document.getElementById('custom-delete-room-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        modal.querySelector('div > div').classList.add('scale-90', 'translate-y-4');
+        setTimeout(() => modal.remove(), 300);
     }
 }
+
 // =====================================================
 // CHATBOT
 // =====================================================
