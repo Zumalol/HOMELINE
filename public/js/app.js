@@ -262,26 +262,165 @@ async function addDormitory() {
     }
 }
 
-async function editDormitory(id, oldName) {
-    const newName = prompt('แก้ไขชื่อหอพัก:', oldName);
-    if (!newName || newName.trim() === '' || newName === oldName) return;
+// ฟังก์ชันแสดง Modal Popup สำหรับแก้ไขชื่อหอพัก (แทน prompt)
+function editDormitory(id, oldName) {
+    // ลบ Popup เก่าออกก่อน (ถ้ามี)
+    const existingModal = document.getElementById('custom-dorm-modal');
+    if (existingModal) existingModal.remove();
 
-    try {
-        await fetch(`/api/dormitories/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName.trim() })
-        });
-        fetchDormitories();
-    } catch (e) { console.error(e); }
+    const modal = document.createElement('div');
+    modal.id = 'custom-dorm-modal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs transition-opacity duration-300 opacity-0';
+    modal.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-indigo-100 transform transition-all duration-300 scale-90 translate-y-4">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl font-bold shadow-inner">
+                    ✏️
+                </div>
+                <div>
+                    <h4 class="font-extrabold text-gray-800 text-base">แก้ไขชื่อหอพัก</h4>
+                    <p class="text-xs text-gray-400 font-medium">ระบบจัดการหอพัก</p>
+                </div>
+            </div>
+            
+            <div class="mb-5">
+                <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">ชื่อหอพักใหม่</label>
+                <input type="text" id="swalDormInput" value="${escapeHTML(oldName)}" class="w-full px-4 py-3 text-sm border border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none bg-gray-50/50 transition-all shadow-2xs" />
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="closeDormModal()" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer">
+                    ยกเลิก
+                </button>
+                <button id="swalConfirmEditBtn" class="flex-1 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100 active:scale-95 cursor-pointer">
+                    บันทึก
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // เล่นอนิเมชัน Fade in & Zoom in
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('div > div').classList.remove('scale-90', 'translate-y-4');
+        modal.querySelector('div > div').classList.add('scale-100', 'translate-y-0');
+        
+        // Focus ไปที่ input พร้อมเลือกข้อความทั้งหมด
+        const inputEl = document.getElementById('swalDormInput');
+        if (inputEl) {
+            inputEl.focus();
+            inputEl.select();
+        }
+    }, 10);
+
+    // ผูก Event กดปุ่มบันทึก
+    document.getElementById('swalConfirmEditBtn').onclick = async () => {
+        const newName = document.getElementById('swalDormInput').value.trim();
+        if (!newName || newName === oldName) {
+            closeDormModal();
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/dormitories/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            });
+
+            if (res.ok) {
+                showCustomPopup('✅ แก้ไขชื่อหอพักสำเร็จ', 'success');
+                fetchDormitories();
+            } else {
+                showCustomPopup('❌ ไม่สามารถแก้ไขชื่อหอพักได้', 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showCustomPopup('❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+        }
+        closeDormModal();
+    };
 }
 
-async function deleteDormitory(id) {
-    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบกลุ่มหอพักนี้?')) return;
-    try {
-        await fetch(`/api/dormitories/${id}`, { method: 'DELETE' });
-        fetchDormitories();
-    } catch (e) { console.error(e); }
+function closeDormModal() {
+    const modal = document.getElementById('custom-dorm-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        modal.querySelector('div > div').classList.add('scale-90', 'translate-y-4');
+        setTimeout(() => modal.remove(), 300);
+    }
+}
+
+// ฟังก์ชันแสดง Modal Popup ยืนยันการลบกลุ่มหอพัก (แทน confirm)
+function deleteDormitory(id) {
+    // ลบ Popup เก่าออกก่อน (ถ้ามี)
+    const existingModal = document.getElementById('custom-delete-modal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'custom-delete-modal';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs transition-opacity duration-300 opacity-0';
+    modal.innerHTML = `
+        <div class="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-rose-100 transform transition-all duration-300 scale-90 translate-y-4">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-2xl font-bold shadow-inner">
+                    🗑️
+                </div>
+                <div>
+                    <h4 class="font-extrabold text-gray-800 text-base">ยืนยันการลบหอพัก</h4>
+                    <p class="text-xs text-gray-400 font-medium">ระบบจัดการหอพัก</p>
+                </div>
+            </div>
+            
+            <p class="text-sm text-gray-600 font-medium mb-6 leading-relaxed">คุณแน่ใจหรือไม่ที่จะลบกลุ่มหอพักนี้? การกระทำนี้ไม่สามารถย้อนกลับได้</p>
+
+            <div class="flex gap-2">
+                <button onclick="closeDeleteModal()" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer">
+                    ยกเลิก
+                </button>
+                <button id="swalConfirmDeleteBtn" class="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-100 active:scale-95 cursor-pointer">
+                    ยืนยันลบ
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // เล่นอนิเมชัน Fade in & Zoom in
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('div > div').classList.remove('scale-90', 'translate-y-4');
+        modal.querySelector('div > div').classList.add('scale-100', 'translate-y-0');
+    }, 10);
+
+    // ผูก Event กดปุ่มยืนยันลบ
+    document.getElementById('swalConfirmDeleteBtn').onclick = async () => {
+        try {
+            const res = await fetch(`/api/dormitories/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                showCustomPopup('✅ ลบกลุ่มหอพักสำเร็จ', 'success');
+                fetchDormitories();
+            } else {
+                showCustomPopup('❌ ไม่สามารถลบกลุ่มหอพักได้', 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showCustomPopup('❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+        }
+        closeDeleteModal();
+    };
+}
+
+function closeDeleteModal() {
+    const modal = document.getElementById('custom-delete-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        modal.querySelector('div > div').classList.add('scale-90', 'translate-y-4');
+        setTimeout(() => modal.remove(), 300);
+    }
 }
 
 // =====================================================
