@@ -1854,7 +1854,6 @@ async function resetRoomForm() {
     renderRoomImagePreviews();
 }
 
-// ฟังก์ชันเดียวรองรับทั้งเพิ่ม (POST) และแก้ไข (PUT)
 async function saveRoom(e) {
     e.preventDefault();
 
@@ -1872,7 +1871,6 @@ async function saveRoom(e) {
     const is_moving_out = document.getElementById('roomMovingOutTick')?.checked || false;
     const move_out_day = document.getElementById('moveOutDay')?.value || '';
     const move_out_month = document.getElementById('moveOutMonth')?.value || '';
-    // ดึงค่ารูปภาพ
     const image_data = document.getElementById('roomImageData')?.value || '';
 
     const payload = { 
@@ -1893,15 +1891,16 @@ async function saveRoom(e) {
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.message);
 
-        alert('✅ ' + data.message);
+        // ✅ เปลี่ยนเป็น Animated Popup (Success)
+        showCustomPopup('✅ ' + data.message, 'success');
         resetRoomForm();
         await fetchRoomsPage();
     } catch (error) {
-        alert('❌ ' + error.message);
+        // ❌ เปลี่ยนเป็น Animated Popup (Error)
+        showCustomPopup('❌ ' + error.message, 'error');
     }
 }
 
-// ฟังก์ชันลบห้องพัก
 async function deleteRoom(id) {
     if (!confirm('คุณแน่ใจหรือไม่ที่จะลบห้องพักนี้?')) {
         return;
@@ -1918,12 +1917,14 @@ async function deleteRoom(id) {
             throw new Error(data.message || data.error || 'ลบห้องพักไม่สำเร็จ');
         }
 
-        alert('✅ ' + data.message);
+        // ✅ เปลี่ยนเป็น Animated Popup (Success)
+        showCustomPopup('✅ ' + data.message, 'success');
         await fetchRoomsPage();
 
     } catch (error) {
         console.error('Delete Room Error:', error);
-        alert('❌ ' + error.message);
+        // ❌ เปลี่ยนเป็น Animated Popup (Error)
+        showCustomPopup('❌ ' + error.message, 'error');
     }
 }
 // =====================================================
