@@ -834,7 +834,7 @@ app.post('/webhook', async (req, res) => {
                 }
             }
 
-            // 🟢 ดักจับคำว่า "สนใจรายละเอียดห้อง..."
+            // 🟢 ดักจับคำว่า "สนใจรายละเอียดห้อง..." (แสดงรายละเอียดพร้อมอัลบั้มรูปภาพทันที)
             const roomDetailMatch = event.message && event.message.type === 'text' && event.message.text.match(/^สนใจรายละเอียดห้อง\s*(.+)$/);
             if (roomDetailMatch) {
                 const roomNumber = roomDetailMatch[1].trim();
@@ -848,14 +848,15 @@ app.post('/webhook', async (req, res) => {
 
                 if (roomResult.rows.length > 0) {
                     const room = roomResult.rows[0];
+                    let imagesList = [];
 
-                    let imageCount = 0;
                     if (room.image_data) {
                         try {
                             const parsed = JSON.parse(room.image_data);
-                            imageCount = Array.isArray(parsed) ? parsed.length : 1;
+                            if (Array.isArray(parsed)) imagesList = parsed;
+                            else imagesList = [parsed];
                         } catch (e) {
-                            imageCount = 1;
+                            imagesList = [room.image_data];
                         }
                     }
 
@@ -869,47 +870,126 @@ app.post('/webhook', async (req, res) => {
                         statusColor = '#3b82f6';
                     }
 
-                    const flexContents = {
+                    const host = req.get('host');
+                    let carouselBubbles = [];
+
+                    if (imagesList.length > 0) {
+                        // สร้างการ์ดสไลด์ (Carousel) สำหรับรูปภาพทุกรูป เพื่อให้ผู้ใช้กดดูรูปเต็มหรือเลื่อนดูได้ทันที
+                        carouselBubbles = imagesList.map((_, idx) => {
+                            const imageUrl = `https://${host}${apiPrefix}/rooms/${room.id}/image?index=${idx}`;
+                            return {
+                                type: "bubble",
+                                size: "mega",
+                                hero: {
+                                    type: "image",
+                                    url: imageUrl,
+                                    size: "full",
+                                    aspectRatio: "4:3",
+                                    aspectMode: "cover",
+                                    action: {
+                                        type: "uri",
+                                        label: "ดูรูปขนาดเต็ม",
+                                        uri: imageUrl
+                                    }
+                                },
+                                body: {
+                                    type: "box",
+                                    layout: "vertical",
+                                    paddingAll: "md",
+                                    contents: [
+                                        {
+                                            type: "text",
+                                            text: `🖼️ รูปที่ ${idx + 1}/${imagesList.length} - ห้อง ${room.number}`,
+                                            weight: "bold",
+                                            size: "sm",
+                                            color: "#374151",
+                                            align: "center"
+                                        }
+                                    ]
+                                }
+                            };
+                        });
+                    }
+
+                    // สร้างการ์ดสรุปรายละเอียดห้องดีไซน์พรีเมียม
+                    const detailBubble = {
                         type: "bubble",
                         size: "mega",
                         header: {
                             type: "box",
                             layout: "vertical",
                             backgroundColor: "#4f46e5",
-                            paddingAll: "xl",
+                            paddingAll: "20px",
                             contents: [
-                                { type: "text", text: `🏢 รายละเอียดห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "xl" },
-                                { type: "text", text: room.dormitory_name || "ไม่ระบุหอพัก", color: "#c7d2fe", size: "sm", margin: "xs" }
+                                {
+                                    type: "box",
+                                    layout: "horizontal",
+                                    contents: [
+                                        {
+                                            type: "text",
+                                            text: `🏢 ห้อง ${room.number}`,
+                                            color: "#ffffff",
+                                            weight: "bold",
+                                            size: "xl",
+                                            flex: 3
+                                        },
+                                        {
+                                            type: "text",
+                                            text: room.status === 'Occupied' ? 'มีผู้เช่าแล้ว' : 'ว่างพร้อมอยู่',
+                                            color: room.status === 'Occupied' ? '#fca5a5' : '#6ee7b7',
+                                            size: "xs",
+                                            weight: "bold",
+                                            align: "end",
+                                            gravity: "center",
+                                            flex: 2
+                                        }
+                                    ]
+                                },
+                                {
+                                    type: "text",
+                                    text: room.dormitory_name || "ไม่ระบุหอพัก",
+                                    color: "#e0e7ff",
+                                    size: "sm",
+                                    margin: "sm"
+                                }
                             ]
                         },
                         body: {
                             type: "box",
                             layout: "vertical",
-                            spacing: "md",
-                            paddingAll: "xl",
+                            spacing: "lg",
+                            paddingAll: "20px",
                             contents: [
                                 {
                                     type: "box",
                                     layout: "baseline",
                                     contents: [
-                                        { type: "text", text: "ราคาเช่า", color: "#6b7280", size: "sm", flex: 1 },
-                                        { type: "text", text: `${Number(room.price || 0).toLocaleString()} ฿ / เดือน`, color: "#4f46e5", size: "lg", weight: "bold", flex: 2, align: "end" }
+                                        { type: "text", text: "ราคาเช่า", color: "#9ca3af", size: "sm", flex: 2 },
+                                        { type: "text", text: `${Number(room.price || 0).toLocaleString()} ฿ / เดือน`, color: "#ef4444", size: "lg", weight: "bold", flex: 3, align: "end" }
                                     ]
+                                },
+                                {
+                                    type: "separator",
+                                    color: "#f3f4f6"
                                 },
                                 {
                                     type: "box",
                                     layout: "baseline",
                                     contents: [
-                                        { type: "text", text: "ประเภทห้อง", color: "#6b7280", size: "sm", flex: 1 },
-                                        { type: "text", text: room.type || "Standard", color: "#1f2937", size: "sm", weight: "bold", flex: 2, align: "end" }
+                                        { type: "text", text: "ประเภทห้อง", color: "#9ca3af", size: "sm", flex: 2 },
+                                        { type: "text", text: room.type || "Standard", color: "#1f2937", size: "sm", weight: "bold", flex: 3, align: "end" }
                                     ]
+                                },
+                                {
+                                    type: "separator",
+                                    color: "#f3f4f6"
                                 },
                                 {
                                     type: "box",
                                     layout: "baseline",
                                     contents: [
-                                        { type: "text", text: "สถานะ", color: "#6b7280", size: "sm", flex: 1 },
-                                        { type: "text", text: statusText, color: statusColor, size: "sm", weight: "bold", flex: 2, align: "end" }
+                                        { type: "text", text: "สถานะห้อง", color: "#9ca3af", size: "sm", flex: 2 },
+                                        { type: "text", text: statusText, color: statusColor, size: "sm", weight: "bold", flex: 3, align: "end" }
                                     ]
                                 }
                             ]
@@ -918,48 +998,26 @@ app.post('/webhook', async (req, res) => {
                             type: "box",
                             layout: "vertical",
                             spacing: "sm",
-                            paddingAll: "xl",
-                            contents: []
+                            paddingAll: "20px",
+                            contents: [
+                                {
+                                    type: "button",
+                                    style: "primary",
+                                    color: "#4f46e5",
+                                    height: "md",
+                                    action: {
+                                        type: "message",
+                                        label: "สนใจจองห้องนี้ / ติดต่อแอดมิน",
+                                        text: `ต้องการจองห้อง ${room.number}`
+                                    }
+                                }
+                            ]
                         }
                     };
 
-                    if (imageCount > 0) {
-                        flexContents.footer.contents.push({
-                            type: "button",
-                            style: "secondary",
-                            color: "#4f46e5",
-                            action: {
-                                type: "message",
-                                label: `📸 ดูรูปภาพทั้งหมด (${imageCount} รูป)`,
-                                text: `ดูรูปภาพห้อง ${room.number}`
-                            }
-                        });
-                    }
-
-                    flexContents.footer.contents.push({
-                        type: "button",
-                        style: "primary",
-                        color: "#4f46e5",
-                        action: {
-                            type: "message",
-                            label: "สนใจจองห้องนี้ / ติดต่อแอดมิน",
-                            text: `ต้องการจองห้อง ${room.number}`
-                        }
-                    });
-
-                    if (room.image_data) {
-                        const host = req.get('host');
-                        flexContents.hero = {
-                            type: "image",
-                            url: `https://${host}${apiPrefix}/rooms/${room.id}/image?index=0`,
-                            size: "full",
-                            aspectRatio: "16:9",
-                            aspectMode: "cover"
-                        };
-                    }
-
+                    // หากมีข้อมูลย้ายออก เพิ่มกล่องแจ้งเตือนพิเศษ
                     if (room.is_moving_out) {
-                        flexContents.body.contents.push({
+                        detailBubble.body.contents.push({
                             type: "box",
                             layout: "horizontal",
                             backgroundColor: "#fff7ed",
@@ -979,6 +1037,9 @@ app.post('/webhook', async (req, res) => {
                         });
                     }
 
+                    // รวมการ์ดรูปภาพทั้งหมด (ถ้ามี) ไว้หน้าการ์ดรายละเอียด เพื่อให้ปัดดูรูปได้เลยทันที
+                    const allBubbles = [...carouselBubbles, detailBubble];
+
                     await fetch('https://api.line.me/v2/bot/message/reply', {
                         method: 'POST',
                         headers: {
@@ -989,9 +1050,21 @@ app.post('/webhook', async (req, res) => {
                             replyToken: event.replyToken,
                             messages: [{
                                 type: "flex",
-                                altText: `รายละเอียดห้อง ${room.number}`,
-                                contents: flexContents
+                                altText: `รายละเอียดและรูปภาพห้อง ${room.number}`,
+                                contents: { type: "carousel", contents: allBubbles }
                             }]
+                        })
+                    });
+                } else {
+                    await fetch('https://api.line.me/v2/bot/message/reply', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                        },
+                        body: JSON.stringify({
+                            replyToken: event.replyToken,
+                            messages: [{ type: 'text', text: `❌ ไม่พบข้อมูลห้อง ${roomNumber} ในระบบครับ` }]
                         })
                     });
                 }
