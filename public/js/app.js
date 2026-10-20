@@ -2524,17 +2524,19 @@ async function generateBills() {
         // เคลียร์ค่าผู้รับเงินเมื่อสร้างบิลสำเร็จ
         resetBillingPaymentForm();
 
+        // ✅ เปลี่ยนมาใช้ Animated Popup เด้งขึ้นมาแทนการแสดงผลใน div เดิม
+        showCustomPopup('✅ ' + data.message, 'success');
+
+        // (ทางเลือก) เคลียร์ข้อความเก่าใน div ผลลัพธ์ (ถ้ามี)
         const result = document.getElementById('billing-result');
         if (result) {
-            result.innerHTML = `
-                <div class="p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg mb-4">
-                    ✅ ${escapeHTML(data.message)}
-                </div>
-            `;
+            result.innerHTML = '';
         }
+
     } catch (error) {
         console.error('Generate Bills Error:', error);
-        alert('❌ ' + error.message);
+        // ❌ แสดง Animated Popup แจ้งเตือนเมื่อเกิดข้อผิดพลาด
+        showCustomPopup('❌ ' + error.message, 'error');
     }
 }
 
