@@ -706,32 +706,65 @@ app.post('/webhook', async (req, res) => {
                                 type: "box",
                                 layout: "vertical",
                                 backgroundColor: "#4f46e5",
-                                paddingAll: "xl",
+                                paddingAll: "20px",
                                 contents: [
-                                    { type: "text", text: `ห้อง ${room.number}`, color: "#ffffff", weight: "bold", size: "xl" },
-                                    { type: "text", text: room.dormitory_name || "ไม่ระบุหอพัก", color: "#e0e7ff", size: "sm", margin: "sm" }
+                                    {
+                                        type: "box",
+                                        layout: "horizontal",
+                                        contents: [
+                                            {
+                                                type: "text",
+                                                text: `ห้อง ${room.number}`,
+                                                color: "#ffffff",
+                                                weight: "bold",
+                                                size: "xl",
+                                                flex: 3
+                                            },
+                                            {
+                                                type: "text",
+                                                text: "ว่างพร้อมอยู่",
+                                                color: "#10b981",
+                                                size: "xs",
+                                                weight: "bold",
+                                                align: "end",
+                                                gravity: "center",
+                                                flex: 2
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        type: "text",
+                                        text: room.dormitory_name || "ไม่ระบุหอพัก",
+                                        color: "#e0e7ff",
+                                        size: "sm",
+                                        margin: "sm"
+                                    }
                                 ]
                             },
                             body: {
                                 type: "box",
                                 layout: "vertical",
-                                spacing: "md",
-                                paddingAll: "xl",
+                                spacing: "lg",
+                                paddingAll: "20px",
                                 contents: [
                                     {
                                         type: "box",
                                         layout: "baseline",
                                         contents: [
-                                            { type: "text", text: "ประเภท", color: "#888888", size: "sm", flex: 1 },
-                                            { type: "text", text: room.type || "Standard", color: "#333333", size: "sm", flex: 2, align: "end", weight: "bold" }
+                                            { type: "text", text: "ประเภทห้อง", color: "#9ca3af", size: "sm", flex: 2 },
+                                            { type: "text", text: room.type || "Standard", color: "#1f2937", size: "sm", weight: "bold", flex: 3, align: "end" }
                                         ]
+                                    },
+                                    {
+                                        type: "separator",
+                                        color: "#f3f4f6"
                                     },
                                     {
                                         type: "box",
                                         layout: "baseline",
                                         contents: [
-                                            { type: "text", text: "ราคา", color: "#888888", size: "sm", flex: 1 },
-                                            { type: "text", text: `${Number(room.price || 0).toLocaleString()} ฿`, color: "#ef4444", size: "md", weight: "bold", flex: 2, align: "end" }
+                                            { type: "text", text: "ราคาเช่า", color: "#9ca3af", size: "sm", flex: 2 },
+                                            { type: "text", text: `${Number(room.price || 0).toLocaleString()} ฿`, color: "#ef4444", size: "lg", weight: "bold", flex: 3, align: "end" }
                                         ]
                                     }
                                 ]
@@ -739,12 +772,14 @@ app.post('/webhook', async (req, res) => {
                             footer: {
                                 type: "box",
                                 layout: "vertical",
-                                paddingAll: "xl",
+                                spacing: "sm",
+                                paddingAll: "20px",
                                 contents: [
                                     {
                                         type: "button",
                                         style: "primary",
                                         color: "#4f46e5",
+                                        height: "md",
                                         action: {
                                             type: "message",
                                             label: "ดูรายละเอียด / สนใจห้องนี้",
@@ -755,6 +790,7 @@ app.post('/webhook', async (req, res) => {
                             }
                         };
 
+                        // ถ้ามีรูปภาพ ให้ใส่ Hero Image ด้านบนสุดของการ์ด
                         if (room.image_data && room.image_data.startsWith('http')) {
                             bubble.hero = {
                                 type: "image",
