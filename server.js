@@ -1603,7 +1603,27 @@ app.post('/webhook', async (req, res) => {
                     }
                 } else {
                     const pendingBill = pendingSlipBills.get(event.source.userId) || '';
+
+                    if (!pendingBill) {
+                        // ถ้าส่งรูปมาโดดๆ โดยไม่ได้กดเลือก "ตรวจสอบบิลค้างชำระ" -> "เลือกชำระบิลนี้" ก่อน
+                        await fetch('https://api.line.me/v2/bot/message/reply', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                            },
+                            body: JSON.stringify({
+                                replyToken: event.replyToken,
+                                messages: [{ 
+                                    type: 'text', 
+                                    text: 'หอพักบ้านเพื่่อนขอขอบคุณที่ใช้บริการของทางเราครับ และหากต้องการชำระเงินให้ทำตามนี้ครับ \n1️⃣ กดที่เมนู "ตรวจสอบบิลค้างชำระ"\n2️⃣ เลือกบิลที่ต้องการชำระ\n3️⃣ ส่งรูปสลิปเพื่อยืนยันการชำระเงิน' 
+                                }]
+                            })
+                        });
+                        return; // หยุดการทำงานทันที ไม่เรียก SlipOK
+                    }
                     
+                    // --- หากมี pendingBill อยู่แล้ว ดำเนินการตรวจสอบสลิปตามปกติ ---
                     const imageRes = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
                         headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
                     });
@@ -1675,7 +1695,7 @@ app.post('/webhook', async (req, res) => {
                                                     action: {
                                                         type: "postback",
                                                         label: "✅ ยืนยันรับยอด",
-                                                        data: `action=confirm_slip&userId=${event.source.userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
+                                                        data: `action=confirm_slip&userId=${userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
                                                     }
                                                 }
                                             ]
