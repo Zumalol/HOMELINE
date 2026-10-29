@@ -2525,12 +2525,12 @@ async function confirmAndSendBill() {
 
     const confirmBtn = document.getElementById('confirmSendBillBtn');
     if (confirmBtn) {
+        if (confirmBtn.disabled) return; // ป้องกันการกดซ้ำขณะกำลังส่ง
         confirmBtn.disabled = true;
         confirmBtn.innerText = '⏳ กำลังบันทึกและส่ง LINE...';
     }
 
     try {
-        // คำนวณวันเกินกำหนดเพิ่มเติมฝั่งเซิร์ฟเวอร์
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const due = new Date(pendingBillPayload.dueDate);
@@ -2579,7 +2579,6 @@ async function confirmAndSendBill() {
         }
     }
 }
-
 // ผูกฟังก์ชันเข้ากับ Window Scope
 window.generateBills = generateBills;
 window.closeBillPreviewModal = closeBillPreviewModal;

@@ -2491,6 +2491,34 @@ async function createBillingImage(room, inputs, filePath) {
 }
 
 // =====================================================
+// เพิ่มระบบ Queue สำหรับการสร้างภาพบิลด้วย Puppeteer
+// =====================================================
+let isGeneratingBill = false;
+const billQueue = [];
+
+async function processBillQueue() {
+    if (isGeneratingBill || billQueue.length === 0) return;
+    isGeneratingBill = true;
+    const { room, body, resolve, reject } = billQueue.shift();
+    try {
+        const uploadResult = await createBillingImage(room, body);
+        resolve(uploadResult);
+    } catch (err) {
+        reject(err);
+    } finally {
+        isGeneratingBill = false;
+        processBillQueue();
+    }
+}
+
+function enqueueBillGeneration(room, body) {
+    return new Promise((resolve, reject) => {
+        billQueue.push({ room, body, resolve, reject });
+        processBillQueue();
+    });
+}
+
+// =====================================================
 // นำ API 2 ตัวนี้ไปแทนที่ /api/generate-bills และ /api/export-billing-excel เดิม
 // =====================================================
 
@@ -2499,82 +2527,38 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
     const finePerDay = Number(req.body.finePerDay || req.body.fine_per_day) || 0;
     const { dormName, roomNumber, lineUserId } = req.body;
 
-    // Normalize คีย์ลง req.body
     req.body.billDueDate = billDueDate;
     req.body.finePerDay = finePerDay;
+
+    const client = await pool.connect();
     try {
-        const result = await pool.query(`
+        await client.query('BEGIN'); // ใช้ Transaction ป้องกันข้อมูลชนกัน
+
+        const result = await client.query(`
             SELECT r.*, d.name as dormitory_name 
             FROM rooms r
             JOIN dormitories d ON r.dormitory_id = d.id
             WHERE r.number = $1 AND d.name = $2 AND r.status = 'Occupied'
+            FOR UPDATE
         `, [roomNumber, dormName]);
 
-        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'ไม่พบห้องที่ระบุ หรือห้องยังไม่มีผู้เช่า' });
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: 'ไม่พบห้องที่ระบุ หรือห้องยังไม่มีผู้เช่า' });
+        }
         
         const room = result.rows[0];
 
-        // 🟢 1. อ่านค่าธนาคารรองรับคีย์ทุกรูปแบบ
-        let payBank = req.body.payBank || req.body.bank_name || req.body.bankName;
-        let payAccountNo = req.body.payAccountNo || req.body.account_number || req.body.accountNumber;
-        let payName = req.body.payName || req.body.account_name || req.body.accountName;
-        let payPhone = req.body.payPhone || req.body.phone;
-        let payQrBase64 = req.body.payQrBase64 || req.body.qr_image || req.body.qrImage;
-
-
-        // 🟢 2. หากใน Request ไม่มีข้อมูล ให้ดึงบัญชีล่าสุดจากตาราง payment_accounts อัตโนมัติ
-        if (!payBank || !payAccountNo) {
-            const defaultAcc = await pool.query('SELECT * FROM payment_accounts ORDER BY id DESC LIMIT 1');
-            if (defaultAcc.rows.length > 0) {
-                const acc = defaultAcc.rows[0];
-                payBank = payBank || acc.bank_name;
-                payAccountNo = payAccountNo || acc.account_number;
-                payName = payName || acc.account_name;
-                payPhone = payPhone || acc.phone;
-                payQrBase64 = payQrBase64 || acc.qr_image;
-            }
-        }
-
-        // นำค่าที่ Normalize แล้วใส่กลับลงใน req.body
-        req.body.payBank = payBank;
-        req.body.payAccountNo = payAccountNo;
-        req.body.payName = payName;
-        req.body.payPhone = payPhone;
-        req.body.payQrBase64 = payQrBase64;
-
-        if (payAccountNo) {
-            const existingAcc = await pool.query('SELECT id FROM payment_accounts WHERE account_number = $1', [payAccountNo]);
-            if (existingAcc.rows.length > 0) {
-                await pool.query(
-                    `UPDATE payment_accounts 
-                     SET bank_name = COALESCE($1, bank_name), 
-                         account_name = COALESCE($2, account_name), 
-                         phone = COALESCE($3, phone), 
-                         qr_image = COALESCE($4, qr_image)
-                     WHERE account_number = $5`,
-                    [payBank, payName, payPhone, payQrBase64, payAccountNo]
-                );
-            } else {
-                await pool.query(
-                    `INSERT INTO payment_accounts (bank_name, account_number, account_name, phone, qr_image)
-                     VALUES ($1, $2, $3, $4, $5)`,
-                    [payBank, payAccountNo, payName, payPhone, payQrBase64]
-                );
-            }
-        }
-
-        // สร้างรูปบิลและอัปโหลดขึ้น Cloudinary
-        const uploadResult = await createBillingImage(room, req.body);
+        // เรียกผ่านระบบ Queue เพื่อไม่ให้ Puppeteer เปิดชนกันหลายตัวพร้อมกัน
+        const uploadResult = await enqueueBillGeneration(room, req.body);
         const fileUrl = uploadResult.secure_url;
 
-        // บันทึก URL บิลลงในตาราง bills
-        await pool.query(`
+        await client.query(`
             INSERT INTO bills (room_number, bill_url, public_id, status, bill_data)
             VALUES ($1, $2, $3, 'ค้างชำระ', $4)
         `, [room.number, fileUrl, uploadResult.public_id, JSON.stringify(req.body)]);
 
-        // อัปเดตสถานะในตาราง rooms
-        await pool.query(`
+        await client.query(`
             UPDATE rooms 
             SET payment_status = 'ค้างชำระ', 
                 bill_due_date = $1, 
@@ -2583,44 +2567,48 @@ app.post(`${apiPrefix}/generate-bills`, async (req, res) => {
             WHERE id = $4
         `, [billDueDate || null, finePerDay || 0, JSON.stringify(req.body), room.id]);
 
+        await client.query('COMMIT');
+
+        // ส่ง LINE Asynchronously (ไม่รอให้ส่ง LINE เสร็จแล้วค่อยตอบกลับ Client เพื่อความไว)
         if (lineUserId) {
-            const formattedMonth = formatThaiMonth(req.body.billMonth);
-            let messageText = `📝 แจ้งยอดค่าใช้จ่าย ประจำเดือน: ${formattedMonth}\n🚪 ห้อง: ${room.number}\n👤 ผู้เช่า: ${room.tenant}`;
+            setImmediate(async () => {
+                try {
+                    const formattedMonth = formatThaiMonth(req.body.billMonth);
+                    let messageText = `📝 แจ้งยอดค่าใช้จ่าย ประจำเดือน: ${formattedMonth}\n🚪 ห้อง: ${room.number}\n👤 ผู้เช่า: ${room.tenant}`;
+                    if (billDueDate) messageText += `\n📅 กำหนดชำระภายใน: ${billDueDate}`;
+                    messageText += `\n\nตรวจสอบรายละเอียดบิลจากรูปภาพด้านล่างครับ 👇`;
 
-            if (billDueDate) {
-                const d = new Date(billDueDate);
-                const dueDateFormatted = !isNaN(d.getTime()) 
-                    ? d.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' }) 
-                    : billDueDate;
-                messageText += `\n📅 กำหนดชำระภายใน: ${dueDateFormatted}`;
-                if (finePerDay > 0) messageText += `\n⚠️ ค่าปรับกรณีเกินกำหนด: ${finePerDay} บาท/วัน`;
-            }
-            
-            messageText += `\n\nตรวจสอบรายละเอียดบิลจากรูปภาพด้านล่างครับ 👇`;
-
-            await fetch('https://api.line.me/v2/bot/message/push', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
-                },
-                body: JSON.stringify({
-                    to: lineUserId,
-                    messages: [
-                        { type: 'text', text: messageText },
-                        { type: 'image', originalContentUrl: fileUrl, previewImageUrl: fileUrl }
-                    ]
-                })
+                    await fetch('https://api.line.me/v2/bot/message/push', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
+                        },
+                        body: JSON.stringify({
+                            to: lineUserId,
+                            messages: [
+                                { type: 'text', text: messageText },
+                                { type: 'image', originalContentUrl: fileUrl, previewImageUrl: fileUrl }
+                            ]
+                        })
+                    });
+                } catch (lineErr) {
+                    console.error('Async LINE Push Error:', lineErr);
+                }
             });
         }
 
         res.json({
             success: true,
-            message: lineUserId ? 'ระบบคำนวณและส่งรูปภาพบิลให้ผู้เช่าทาง LINE สำเร็จ!' : 'สร้างรูปภาพบิลเรียบร้อยแล้ว (ไม่ได้ส่งเข้า LINE)'
+            message: lineUserId ? 'ระบบสร้างบิลและส่งแจ้งเตือนทาง LINE สำเร็จ!' : 'สร้างรูปภาพบิลเรียบร้อยแล้ว'
         });
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Generate Bills Error:', error);
-        res.status(500).json({ success: false, message: 'Database/Server error' });
+        res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง' });
+    } finally {
+        client.release();
     }
 });
 
