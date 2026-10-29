@@ -2043,6 +2043,39 @@ app.delete(`${apiPrefix}/exported-bills/*`, deleteBillHandler);
 app.delete(`${apiPrefix}/exported-bills/:id`, deleteBillHandler);
 app.delete(`${apiPrefix}/bills/*`, deleteBillHandler);
 app.delete(`${apiPrefix}/bills/:id`, deleteBillHandler);
+
+// =====================================================
+// API: สร้างภาพตัวอย่างบิล (Preview Bill Image)
+// =====================================================
+app.post(`${apiPrefix}/preview-bill`, async (req, res) => {
+    const { dormName, roomNumber } = req.body;
+    try {
+        const result = await pool.query(`
+            SELECT r.*, d.name as dormitory_name 
+            FROM rooms r
+            JOIN dormitories d ON r.dormitory_id = d.id
+            WHERE r.number = $1 AND d.name = $2 AND r.status = 'Occupied'
+        `, [roomNumber, dormName]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ไม่พบห้องที่ระบุ หรือห้องยังไม่มีผู้เช่า' });
+        }
+        
+        const room = result.rows[0];
+
+        // สร้างรูปบิล (ส่งขึ้น Cloudinary แบบชั่วคราวเพื่อเอา URL มาแสดง Preview)
+        const uploadResult = await createBillingImage(room, req.body);
+
+        res.json({
+            success: true,
+            previewUrl: uploadResult.secure_url
+        });
+    } catch (error) {
+        console.error('Preview Bill Error:', error);
+        res.status(500).json({ success: false, message: 'ไม่สามารถสร้างภาพตัวอย่างบิลได้', error: error.message });
+    }
+});
+
 /*
 |--------------------------------------------------------------------------
 | Rooms

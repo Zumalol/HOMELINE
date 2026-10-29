@@ -2409,12 +2409,34 @@ function removeOptFeeRow(btn) {
         row.querySelector('.optFeeAmount').value = '';
     }
 }
+// ตัวเก็บข้อมูลชั่วคราวสำหรับส่งบิลจริงหลังจากกดon Confirm
+let pendingBillPayload = null;
+
+// 1. ฟังก์ชันเมื่อกดปุ่ม "สร้างบิลและส่งแจ้งเตือนทาง LINE"
 async function generateBills() {
     const dormName = document.getElementById('billDormName')?.value;
     const roomNumber = document.getElementById('billRoom')?.value;
     const billMonth = document.getElementById('billMonth')?.value;
-    const lineUserId = document.getElementById('billLineUser')?.value;
+    const dueDate = document.getElementById('billDueDate')?.value; 
 
+    if (!billMonth) {
+        showCustomPopup('กรุณาเลือกประจำเดือนที่ออกบิล', 'error');
+        return;
+    }
+    if (!dueDate) {
+        showCustomPopup('กรุณากำหนดวัน/เดือนที่ครบกำหนดชำระ', 'error');
+        return;
+    }
+    if (!dormName) {
+        showCustomPopup('กรุณาเลือกกลุ่มหอพัก', 'error');
+        return;
+    }
+    if (!roomNumber) {
+        showCustomPopup('กรุณาเลือกห้องพักที่ต้องการออกบิล', 'error');
+        return;
+    }
+
+    // รวบรวมข้อมูลทั้งหมดเก็บไว้ในตัวแปรเตรียมส่ง
     const elecPrev = document.getElementById('elecPrev')?.value;
     const elecCurr = document.getElementById('elecCurr')?.value;
     const elecRate = document.getElementById('elecRate')?.value;
@@ -2425,11 +2447,12 @@ async function generateBills() {
     const payBank = document.getElementById('payBank')?.value;
     const payAccountNo = document.getElementById('payAccountNo')?.value;
     const payName = document.getElementById('payName')?.value;
-    const dueDate = document.getElementById('billDueDate')?.value; 
     const finePerDay = document.getElementById('finePerDay')?.value;
     const payPhone = document.getElementById('payPhone')?.value;
-    const optFeeName = document.getElementById('optFeeName')?.value;
+    const lineUserId = document.getElementById('billLineUser')?.value;
+    const payQrBase64 = document.getElementById('payQrBase64')?.value;
     const optFeeCheck = document.getElementById('optFeeCheck')?.checked;
+    
     let optFees = [];
     if (optFeeCheck) {
         document.querySelectorAll('.opt-fee-row').forEach(row => {
@@ -2441,105 +2464,126 @@ async function generateBills() {
         });
     }
 
-    // ดึงค่า Base64 ของ QR Code
-    const payQrBase64 = document.getElementById('payQrBase64')?.value;
+    pendingBillPayload = {
+        dormName, roomNumber, lineUserId, billMonth, 
+        elecPrev, elecCurr, elecRate, 
+        waterPrev, waterCurr, waterRate,
+        payMethod, payBank, payAccountNo, payName, payPhone, payQrBase64,
+        optFeeCheck, optFees, dueDate, finePerDay
+    };
 
-    if (!billMonth) {
-        alert('กรุณาเลือกประจำเดือนที่ออกบิล');
-        return;
-    }
-
-    if (!dueDate) {
-        alert('กรุณากำหนดวัน/เดือนที่ครบกำหนดชำระ');
-        return;
-    }
-    
-    if (payMethod === 'account' && !payAccountNo) {
-        alert('กรุณากรอกเลขบัญชี');
-        return;
-    }
-    if (payMethod === 'qr' && !payQrBase64) {
-        alert('กรุณาอัปโหลดรูป QR Code');
-        return;
-    }
-
-    if (!payName || !payPhone) {
-        alert('กรุณากรอกชื่อผู้รับเงินและเบอร์โทรศัพท์');
-        return;
-    }
- 
-    
-    if (!dormName) {
-        alert('กรุณาเลือกกลุ่มหอพัก');
-        return;
-    }
-    if (!roomNumber) {
-        alert('กรุณาเลือกห้องพักที่ต้องการออกบิล');
-        return;
-    }
-    if (!elecPrev || !elecCurr || !waterPrev || !waterCurr) {
-        alert('กรุณากรอกเลขมิเตอร์น้ำ-ไฟ ให้ครบถ้วน');
-        return;
-    }
-
-    // คำนวณวันเกินกำหนด
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate);
-    due.setHours(0, 0, 0, 0);
-    let isOverdue = false;
-    let overdueDays = 0;
-    let fineAmount = 0;
-
-    if (today > due) {
-        isOverdue = true;
-        overdueDays = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
-        fineAmount = overdueDays * (Number(finePerDay) || 0); // แปลงเป็นตัวเลขและดักค่าว่าง
+    // เปิด Modal Preview และแสดงสถานะกำลังโหลด
+    const modal = document.getElementById('billPreviewModal');
+    const container = document.getElementById('billPreviewImageContainer');
+    if (modal) modal.classList.remove('hidden');
+    if (container) {
+        container.innerHTML = `<div class="text-center py-16 text-indigo-500 font-bold animate-pulse">⏳ กำลังเรนเดอร์ภาพตัวอย่างบิล...</div>`;
     }
 
     try {
-        const res = await fetch('/api/generate-bills', {
+        // เรียก API ขอรูป Preview
+        const res = await fetch('/api/preview-bill', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                dormName, roomNumber, lineUserId, billMonth, 
-                elecPrev, elecCurr, elecRate, 
-                waterPrev, waterCurr, waterRate,
-                payMethod, payBank, payAccountNo, payName, payPhone, payQrBase64,
-                optFeeCheck, optFees,
-                dueDate,
-                finePerDay,
-                isOverdue,
-                overdueDays,
-                fineAmount
-            })
+            body: JSON.stringify(pendingBillPayload)
         });
-
         const data = await res.json();
 
         if (!res.ok || !data.success) {
-            throw new Error(data.message || 'ไม่สามารถออกบิลได้');
+            throw new Error(data.message || 'ไม่สามารถสร้างภาพตัวอย่างได้');
         }
 
-        // เคลียร์ค่าผู้รับเงินเมื่อสร้างบิลสำเร็จ
-        resetBillingPaymentForm();
-
-        // ✅ เปลี่ยนมาใช้ Animated Popup เด้งขึ้นมาแทนการแสดงผลใน div เดิม
-        showCustomPopup('✅ ' + data.message, 'success');
-
-        // (ทางเลือก) เคลียร์ข้อความเก่าใน div ผลลัพธ์ (ถ้ามี)
-        const result = document.getElementById('billing-result');
-        if (result) {
-            result.innerHTML = '';
+        // แสดงรูปภาพตัวอย่างใน Modal
+        if (container) {
+            container.innerHTML = `
+                <a href="${data.previewUrl}" target="_blank" class="block group relative overflow-hidden rounded-2xl border border-gray-200 shadow-md">
+                    <img src="${data.previewUrl}" class="max-h-[60vh] w-auto object-contain mx-auto group-hover:scale-102 transition-transform duration-300">
+                    <div class="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-sm bg-black/40 backdrop-blur-xs">
+                        🔍 คลิกเพื่อดูรูปขนาดเต็ม
+                    </div>
+                </a>
+            `;
         }
-
     } catch (error) {
-        console.error('Generate Bills Error:', error);
-        // ❌ แสดง Animated Popup แจ้งเตือนเมื่อเกิดข้อผิดพลาด
-        showCustomPopup('❌ ' + error.message, 'error');
+        console.error('Preview Error:', error);
+        if (container) {
+            container.innerHTML = `<div class="text-rose-500 font-bold py-8">❌ ${escapeHTML(error.message)}</div>`;
+        }
     }
 }
 
+// 2. ฟังก์ชันปิด Modal Preview
+function closeBillPreviewModal() {
+    const modal = document.getElementById('billPreviewModal');
+    if (modal) modal.classList.add('hidden');
+    pendingBillPayload = null;
+}
+
+// 3. ฟังก์ชันเมื่อกดยืนยันส่งจริงหลังจากดูภาพตัวอย่างแล้ว
+async function confirmAndSendBill() {
+    if (!pendingBillPayload) return;
+
+    const confirmBtn = document.getElementById('confirmSendBillBtn');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerText = '⏳ กำลังบันทึกและส่ง LINE...';
+    }
+
+    try {
+        // คำนวณวันเกินกำหนดเพิ่มเติมฝั่งเซิร์ฟเวอร์
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const due = new Date(pendingBillPayload.dueDate);
+        due.setHours(0, 0, 0, 0);
+        
+        let isOverdue = false;
+        let overdueDays = 0;
+        let fineAmount = 0;
+
+        if (today > due) {
+            isOverdue = true;
+            overdueDays = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
+            fineAmount = overdueDays * (Number(pendingBillPayload.finePerDay) || 0);
+        }
+
+        const finalPayload = {
+            ...pendingBillPayload,
+            isOverdue,
+            overdueDays,
+            fineAmount
+        };
+
+        const res = await fetch('/api/generate-bills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalPayload)
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'ไม่สามารถออกบิลได้');
+
+        closeBillPreviewModal();
+        resetBillingPaymentForm();
+        showCustomPopup('✅ ' + data.message, 'success');
+
+        if (typeof fetchExportedBills === 'function') {
+            await fetchExportedBills();
+        }
+    } catch (error) {
+        console.error('Confirm Send Bill Error:', error);
+        showCustomPopup('❌ ' + error.message, 'error');
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerText = '🚀 ยืนยันและส่งแจ้งเตือนทาง LINE';
+        }
+    }
+}
+
+// ผูกฟังก์ชันเข้ากับ Window Scope
+window.generateBills = generateBills;
+window.closeBillPreviewModal = closeBillPreviewModal;
+window.confirmAndSendBill = confirmAndSendBill;
 // =====================================================
 // SEARCH EXPORTED BILLS
 // =====================================================
