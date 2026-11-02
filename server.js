@@ -1754,6 +1754,8 @@ app.post('/webhook', async (req, res) => {
                             }
                         }
                     }
+                }
+            }
 
             // 3. ดักจับเมื่อแอดมินกด "ปุ่มยืนยันรับยอด" จาก Flex Message (Postback Event)
            if (event.type === 'postback') {
