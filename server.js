@@ -1667,41 +1667,68 @@ app.post('/webhook', async (req, res) => {
                         });
 
                         const adminLineId = process.env.ADMIN_LINE_ID;
-                        if (adminLineId) {
-                            if (slipRes.ok && slipResult.success) {
-                                const flexMessage = {
-                                    type: "flex",
-                                    altText: "มีการส่งสลิปใหม่ รอการยืนยัน",
-                                    contents: {
-                                        type: "bubble",
-                                        body: {
-                                            type: "box",
-                                            layout: "vertical",
-                                            contents: [
-                                                { type: "text", text: "📢 แจ้งเตือนชำระเงินใหม่", weight: "bold", size: "xl", color: "#1f2937" },
-                                                { type: "text", text: `ผู้โอน: ${senderName}`, margin: "md", color: "#4b5563" },
-                                                { type: "text", text: `ยอดเงิน: ${amount} บาท`, color: "#4b5563" },
-                                                { type: "text", text: "✅ สลิปถูกต้อง (SlipOK)", color: "#10b981", margin: "md", weight: "bold" }
-                                            ]
-                                        },
-                                        footer: {
-                                            type: "box",
-                                            layout: "vertical",
-                                            contents: [
-                                                {
-                                                    type: "button",
-                                                    style: "primary",
-                                                    color: "#4f46e5",
-                                                    action: {
-                                                        type: "postback",
-                                                        label: "✅ ยืนยันรับยอด",
-                                                        data: `action=confirm_slip&userId=${userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
-                                                    }
-                                                }
-                                            ]
+                            if (adminLineId) {
+                                if (slipRes.ok && slipResult.success) {
+                                    const data = result.data;
+                                    const senderName = data.sender?.displayName || 'ไม่ระบุชื่อ';
+                                    const amount = data.amount || 0;
+
+                                    // 🔍 ค้นหาข้อมูลห้องพักและกลุ่มหอพักจาก LINE User ID ของผู้โอน
+                                    let dormName = 'ไม่ระบุหอพัก';
+                                    let roomNumber = 'ไม่ระบุห้อง';
+                                    try {
+                                        const roomQuery = await pool.query(`
+                                            SELECT r.number, d.name as dormitory_name 
+                                            FROM rooms r
+                                            JOIN tenants t ON r.tenant = t.name
+                                            LEFT JOIN dormitories d ON r.dormitory_id = d.id
+                                            WHERE t.line_id = $1 
+                                            LIMIT 1
+                                        `, [userId]);
+
+                                        if (roomQuery.rows.length > 0) {
+                                            roomNumber = roomQuery.rows[0].number;
+                                            dormName = roomQuery.rows[0].dormitory_name || 'ไม่ระบุหอพัก';
                                         }
+                                    } catch (err) {
+                                        console.error('Error fetching dorm/room info for admin flex:', err);
                                     }
-                                };
+
+                                    const flexMessage = {
+                                        type: "flex",
+                                        altText: "มีการส่งสลิปใหม่ รอการยืนยัน",
+                                        contents: {
+                                            type: "bubble",
+                                            body: {
+                                                type: "box",
+                                                layout: "vertical",
+                                                contents: [
+                                                    { type: "text", text: "📢 แจ้งเตือนชำระเงินใหม่", weight: "bold", size: "xl", color: "#1f2937" },
+                                                    { type: "text", text: `🏢 หอพัก: ${dormName}`, margin: "md", weight: "bold", color: "#4f46e5" },
+                                                    { type: "text", text: `🚪 ห้อง: ${roomNumber}`, margin: "sm", weight: "bold", color: "#1f2937" },
+                                                    { type: "text", text: `👤 ผู้โอน: ${senderName}`, margin: "sm", color: "#4b5563" },
+                                                    { type: "text", text: `ยอดเงิน: ${amount} บาท`, color: "#4b5563" },
+                                                    { type: "text", text: "✅ สลิปถูกต้อง (SlipOK)", color: "#10b981", margin: "md", weight: "bold" }
+                                                ]
+                                            },
+                                            footer: {
+                                                type: "box",
+                                                layout: "vertical",
+                                                contents: [
+                                                    {
+                                                        type: "button",
+                                                        style: "primary",
+                                                        color: "#4f46e5",
+                                                        action: {
+                                                            type: "postback",
+                                                            label: "✅ ยืนยันรับยอด",
+                                                            data: `action=confirm_slip&userId=${userId}&amount=${amount}&billName=${encodeURIComponent(pendingBill)}`
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        }
+                                    };
 
                                 await fetch('https://api.line.me/v2/bot/message/push', {
                                     method: 'POST',
