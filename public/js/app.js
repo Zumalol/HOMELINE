@@ -973,7 +973,17 @@ async function fetchExportedBills() {
             }
 
             if (paymentStatus === 'ชำระเงินแล้ว') {
-                statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-emerald-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-emerald-400/50 z-10">✅ ชำระเงินแล้ว</span>`;
+                const rawPaidDate = file.paid_at || file.updated_at || file.created_at;
+                const paidDateObj = rawPaidDate ? new Date(rawPaidDate) : new Date();
+                const paidDateText = !isNaN(paidDateObj.getTime())
+                    ? paidDateObj.toLocaleDateString('th-TH', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: '2-digit'
+                    })
+                    : '';
+
+                statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-emerald-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-emerald-400/50 z-10">✅ ชำระเงินแล้ว${paidDateText ? ` (${escapeHTML(paidDateText)})` : ''}</span>`;
             } else if (paymentStatus === 'เกินกำหนด') {
                 statusBadge = `<span class="absolute top-3 left-3 px-3 py-1.5 bg-rose-500/95 backdrop-blur-sm text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 border border-rose-400/50 z-10 animate-pulse">🚨 เกินกำหนดชำระ</span>`;
             } else {
